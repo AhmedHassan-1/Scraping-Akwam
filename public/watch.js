@@ -42,22 +42,6 @@ function hideHint() {
 }
 
 /* ─────────────────────────────────────────────
-   POSTER HELPER
-   
-   We ONLY use the native <video poster="..."> attribute.
-   Plyr's own .plyr__poster overlay is hidden via CSS
-   (display:none) to avoid the fullscreen escape bug.
-   
-   The browser always renders the native poster correctly
-   inside the video rect — it never escapes in FS.
-───────────────────────────────────────────── */
-
-function applyPoster(posterUrl) {
-  if (!posterUrl || !player?.media) return;
-  player.media.setAttribute("poster", posterUrl);
-}
-
-/* ─────────────────────────────────────────────
    BLOB FALLBACK
 ───────────────────────────────────────────── */
 
@@ -66,8 +50,7 @@ async function tryBlob(url) {
   try {
     const res = await fetch(url, { mode: "cors" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const blob = await res.blob();
-    const objectUrl = URL.createObjectURL(blob);
+    const objectUrl = URL.createObjectURL(await res.blob());
     blobUrlCache[url] = objectUrl;
     return objectUrl;
   } catch {
@@ -82,6 +65,10 @@ function revokeAllBlobs() {
 
 /* ─────────────────────────────────────────────
    CORE SOURCE HANDLER
+   — منطق التحميل مطابق للأصل —
+   إصلاحات مضافة فقط:
+   1. errorCount يترست لما تحميل ينجح
+   2. poster يتحط قبل media.load() عشان يظهر أثناء البفرة
 ───────────────────────────────────────────── */
 
 async function applySource(index, preserveTime) {
@@ -104,28 +91,29 @@ async function applySource(index, preserveTime) {
   const savedTime = preserveTime ? media.currentTime : 0;
   const wasPlaying = preserveTime ? !media.paused : true;
 
+  // ── reset ────────────────────────────────────────
   media.pause();
   media.removeAttribute("src");
-
-  // Re-set poster before load() so it shows during buffering
-  if (data._poster) media.setAttribute("poster", data._poster);
-
+  if (data?._poster) media.setAttribute("poster", data._poster); // poster قبل load
   media.load();
 
+  // ── canplay ──────────────────────────────────────
   function onCanPlay() {
+    errorCount = 0; // إصلاح: ترست العداد لما التحميل ينجح
     if (savedTime > 1) media.currentTime = savedTime;
     if (wasPlaying) player.play().catch(() => {});
   }
 
   media.addEventListener("canplay", onCanPlay, { once: true });
 
+  // ── error: جرب blob أو انتقل للمصدر التالي ───────
   async function onMediaError() {
     media.removeEventListener("canplay", onCanPlay);
     showHint(`جارٍ محاولة طريقة بديلة لـ "${src.label}"…`);
+
     const blobUrl = await tryBlob(src.url);
     if (blobUrl) {
       hideHint();
-      if (data._poster) media.setAttribute("poster", data._poster);
       media.src = blobUrl;
       media.load();
       media.addEventListener("canplay", onCanPlay, { once: true });
@@ -137,9 +125,11 @@ async function applySource(index, preserveTime) {
 
   media.addEventListener("error", onMediaError, { once: true });
 
+  // ── set source ───────────────────────────────────
   media.src = src.url;
   media.load();
 
+  // ── sync Plyr quality badge ───────────────────────
   const sz = qualitySize(src.label);
   if (sz) {
     try {
@@ -150,6 +140,8 @@ async function applySource(index, preserveTime) {
 
 /* ─────────────────────────────────────────────
    ERROR HANDLER
+   إصلاح: handleError بيتجاهل لو فيه applySource
+   شغال (تحقق من retryTimer أو switching)
 ───────────────────────────────────────────── */
 
 function handleError() {
@@ -164,7 +156,7 @@ function handleError() {
 
   const next = (currentIndex + 1) % sources.length;
   showHint(
-    `فشل تحميل "${sources[currentIndex].label}" — جارٍ تجربة "${sources[next].label}"…`,
+    `فشل تحميل "${sources[currentIndex]?.label}" — جارٍ تجربة "${sources[next]?.label}"…`,
   );
 
   retryTimer = setTimeout(() => {
@@ -184,11 +176,12 @@ function buildPlyr(startIndex) {
 
   const isIOS =
     /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-  const nativeFS =
+  const nativeFS = !!(
     document.fullscreenEnabled ||
     document.webkitFullscreenEnabled ||
     document.mozFullScreenEnabled ||
-    document.msFullscreenEnabled;
+    document.msFullscreenEnabled
+  );
 
   const opts = {
     ratio: "16:9",
@@ -233,6 +226,13 @@ function buildPlyr(startIndex) {
   player = new Plyr(video, opts);
   player.on("error", handleError);
 
+  // poster بعد ما Plyr يبني الـ DOM
+  if (data?._poster) {
+    player.on("ready", () => {
+      player.media.setAttribute("poster", data._poster);
+    });
+  }
+
   applySource(startIndex, false);
 }
 
@@ -248,16 +248,23 @@ function loadWatchData() {
     raw = null;
   }
 
-  if (!raw) return (location.href = "/");
+  if (!raw) {
+    location.href = "/";
+    return;
+  }
 
   try {
     data = JSON.parse(raw);
   } catch {
-    return (location.href = "/");
+    location.href = "/";
+    return;
   }
 
   sources = (data.sources || []).filter((s) => s?.url?.startsWith("http"));
-  if (!sources.length) return (location.href = "/");
+  if (!sources.length) {
+    location.href = "/";
+    return;
+  }
 
   watchTitle.textContent = data.title || "مشاهدة";
   watchSubtitle.textContent = data.subtitle || "";
@@ -267,8 +274,7 @@ function loadWatchData() {
     data._poster = proxyUrl;
     watchPoster.src = proxyUrl;
     watchPoster.classList.remove("hidden");
-    // Pre-set BEFORE Plyr wraps the element
-    video.setAttribute("poster", proxyUrl);
+    video.setAttribute("poster", proxyUrl); // قبل Plyr يعمل wrap
   }
 
   qualitySection.classList.add("hidden");
@@ -284,3 +290,4 @@ function loadWatchData() {
 
 window.addEventListener("beforeunload", revokeAllBlobs);
 document.addEventListener("DOMContentLoaded", loadWatchData);
+// TEST
