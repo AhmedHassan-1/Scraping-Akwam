@@ -19,6 +19,7 @@ const resultsContainer = $('#resultsContainer');
 
 let currentJobId = null;
 let eventSource = null;
+let queuePollTimer = null;
 let candidates = [];
 const META_KEYS = new Set([
   'Title',
@@ -33,6 +34,7 @@ const META_KEYS = new Set([
 ]);
 
 const STATUS_LABELS = {
+  queued: 'في الطابور',
   discovering: 'جاري الاكتشاف',
   awaiting_selection: 'في انتظار الاختيار',
   processing: 'جاري المعالجة',
@@ -40,6 +42,66 @@ const STATUS_LABELS = {
   cancelled: 'ملغى',
   failed: 'فشل',
 };
+
+function formatQueueMessage(snap) {
+  if (snap.progress?.message) return snap.progress.message;
+  if (snap.queuePosition > 0) {
+    const total = snap.queueTotal ? ` من ${snap.queueTotal}` : '';
+    return `موقعك في الطابور: ${snap.queuePosition}${total}`;
+  }
+  return 'في انتظار الدور في الطابور...';
+}
+
+function applyQueueFromSnap(snap) {
+  if (snap.status !== 'queued') {
+    stopQueuePolling();
+    return;
+  }
+  updateProgressUI({
+    status: 'queued',
+    message: formatQueueMessage(snap),
+  });
+  if (snap.queuePosition > 0 && snap.queueTotal) {
+    progressText.textContent = `الطابور: ${snap.queuePosition} / ${snap.queueTotal}`;
+  }
+  startQueuePolling(snap.id);
+}
+
+function startQueuePolling(jobId) {
+  if (queuePollTimer) return;
+  queuePollTimer = setInterval(async () => {
+    if (!jobId || jobId !== currentJobId) {
+      stopQueuePolling();
+      return;
+    }
+    try {
+      const res = await fetch(`/akwam/jobs/${jobId}`);
+      if (!res.ok) return;
+      const snap = await res.json();
+      if (snap.status !== 'queued') {
+        stopQueuePolling();
+        return;
+      }
+      applyQueueFromSnap(snap);
+    } catch (_) {}
+  }, 2000);
+}
+
+function stopQueuePolling() {
+  if (queuePollTimer) {
+    clearInterval(queuePollTimer);
+    queuePollTimer = null;
+  }
+}
+
+async function parseErrorResponse(res) {
+  try {
+    const data = await res.json();
+    return data.message || data.error || res.statusText;
+  } catch {
+    return (await res.text()) || res.statusText;
+  }
+}
 
 const SWAL_BASE = {
   confirmButtonText: 'حسناً',
@@ -123,11 +185,11 @@ async function startSearch() {
       body: JSON.stringify({ search: query }),
     });
     if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(errText || 'فشل بدء البحث');
+      throw new Error(await parseErrorResponse(res));
     }
     const job = await res.json();
     currentJobId = job.id;
+    applyQueueFromSnap(job);
     connectEvents(job.id);
   } catch (err) {
     await showError('فشل البحث', err.message || 'تعذر بدء عملية البحث');
@@ -177,12 +239,11 @@ function applySnapshot(snap) {
     candidates = snap.candidates;
   }
 
-  if (snap.candidates?.length) {
-    const showPick =
-      snap.status === 'awaiting_selection' ||
-      snap.status === 'discovering';
-    if (showPick) showSelectionUI(snap.candidates);
+  if (snap.candidates?.length && snap.status === 'awaiting_selection') {
+    showSelectionUI(snap.candidates);
   }
+
+  applyQueueFromSnap(snap);
 
   if (snap.results?.length) {
     resultsSection.classList.remove('hidden');
@@ -205,17 +266,34 @@ function handleJobEvent(event) {
   const { type, data } = event;
 
   switch (type) {
+    case 'queue': {
+      const total = data.waitingTotal ? ` من ${data.waitingTotal}` : '';
+      const msg = data.isActive
+        ? 'جاري تنفيذ طلبك الآن...'
+        : data.position > 0
+          ? `موقعك في الطابور: ${data.position}${total}`
+          : 'في انتظار الدور في الطابور...';
+      updateProgressUI({ status: 'queued', message: msg });
+      if (data.position > 0 && data.waitingTotal) {
+        progressText.textContent = `الطابور: ${data.position} / ${data.waitingTotal}`;
+      }
+      break;
+    }
+
     case 'status':
       updateProgressUI({ status: data.status });
+      if (data.status === 'queued') startQueuePolling(currentJobId);
+      else stopQueuePolling();
       if (data.status === 'awaiting_selection' && candidates.length) {
         showSelectionUI(candidates);
       }
-      if (['completed', 'cancelled', 'failed'].includes(data.status)) {
+      if (data.status === 'cancelled') {
+        cleanupJob();
+        resetSearchUI();
+        setBusy(false);
+      } else if (['completed', 'failed'].includes(data.status)) {
         setBusy(false);
         cleanupEvents();
-        if (data.status === 'cancelled') {
-          void showInfo('تم الإلغاء', 'تم إلغاء عملية البحث');
-        }
       }
       break;
 
@@ -269,12 +347,9 @@ function handleJobEvent(event) {
     }
 
     case 'cancelled':
-      updateProgressUI({
-        status: 'cancelled',
-        message: 'تم إلغاء البحث',
-      });
+      cleanupJob();
+      resetSearchUI();
       setBusy(false);
-      cleanupEvents();
       break;
 
     case 'error':
@@ -392,8 +467,7 @@ async function startSelectedProcessing() {
       body: JSON.stringify({ selectedIds }),
     });
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.message || (await res.text()));
+      throw new Error(await parseErrorResponse(res));
     }
   } catch (err) {
     await showError('فشل المعالجة', err.message || 'تعذر بدء المعالجة');
@@ -402,19 +476,39 @@ async function startSelectedProcessing() {
   }
 }
 
+function resetSearchUI() {
+  progressSection.classList.add('hidden');
+  selectionSection.classList.add('hidden');
+  resultsSection.classList.add('hidden');
+  resultsContainer.innerHTML = '';
+  candidatesList.innerHTML = '';
+  candidates = [];
+  statusBadge.textContent = '';
+  statusBadge.className = 'badge';
+  progressMessage.textContent = '';
+  progressText.textContent = '';
+  progressBar.style.width = '0%';
+  startProcessBtn.disabled = false;
+}
+
 async function cancelSearch() {
-  if (!currentJobId) return;
-  try {
-    await fetch(`/akwam/jobs/${currentJobId}`, { method: 'DELETE' });
-  } catch (_) {}
+  const jobId = currentJobId;
+  cleanupJob();
+  resetSearchUI();
   setBusy(false);
-  cleanupEvents();
+
+  if (!jobId) return;
+
+  try {
+    await fetch(`/akwam/jobs/${jobId}`, { method: 'DELETE' });
+  } catch (_) {}
 }
 
 function updateProgressUI({ status, message, current, total, completedItems }) {
   if (status) {
     statusBadge.textContent = STATUS_LABELS[status] || status;
     statusBadge.className = 'badge';
+    if (status === 'queued') statusBadge.classList.add('queued');
     if (status === 'awaiting_selection') statusBadge.classList.add('awaiting');
     if (status === 'completed') statusBadge.classList.add('done');
     if (status === 'cancelled' || status === 'failed')
@@ -648,6 +742,7 @@ function cleanupEvents() {
 
 function cleanupJob() {
   cleanupEvents();
+  stopQueuePolling();
   currentJobId = null;
   candidates = [];
   startProcessBtn.disabled = false;

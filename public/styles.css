@@ -238,6 +238,10 @@ button:disabled {
   font-weight: 600;
 }
 
+.badge.queued {
+  background: #6366f1;
+}
+
 .badge.awaiting {
   background: var(--warning);
   color: #1a1a1a;

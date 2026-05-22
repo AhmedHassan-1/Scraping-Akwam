@@ -1,8 +1,15 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  forwardRef,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Subject, Observable, map } from 'rxjs';
 import { AkwamService } from './akwam.service';
+import { AkwamQueueService } from './akwam-queue.service';
 import {
+  CreateJobOptions,
   JobEvent,
   JobSnapshot,
   JobStatus,
@@ -22,6 +29,11 @@ interface Job {
   movies: Movie[];
   series: Series[];
   error?: string;
+  priority: number;
+  bypassedQueue: boolean;
+  queuePosition: number;
+  queueTotal: number;
+  queueAhead: number;
   abortController: AbortController;
   events$: Subject<JobEvent>;
 }
@@ -30,19 +42,30 @@ interface Job {
 export class AkwamJobsService {
   private readonly jobs = new Map<string, Job>();
 
-  constructor(private readonly akwamService: AkwamService) {}
+  constructor(
+    private readonly akwamService: AkwamService,
+    @Inject(forwardRef(() => AkwamQueueService))
+    private readonly queueService: AkwamQueueService,
+  ) {}
 
-  createJob(search: string): JobSnapshot {
+  async createJob(
+    search: string,
+    options: CreateJobOptions = {},
+  ): Promise<JobSnapshot> {
     const id = randomUUID();
+    const bypass = !!options.bypass;
+    const priority = this.queueService.resolveUserPriority(bypass);
+    const bullPriority = this.queueService.toBullPriority(priority, bypass);
+
     const job: Job = {
       id,
       search,
-      status: 'discovering',
+      status: 'queued',
       candidates: [],
       selectedIds: [],
       progress: {
-        phase: 'init',
-        message: 'بدء البحث...',
+        phase: 'queue',
+        message: 'جاري تسجيل طلبك في الطابور...',
         current: 0,
         total: 0,
         completedItems: 0,
@@ -50,19 +73,38 @@ export class AkwamJobsService {
       results: [],
       movies: [],
       series: [],
+      priority,
+      bypassedQueue: bypass,
+      queuePosition: 0,
+      queueTotal: 0,
+      queueAhead: 0,
       abortController: new AbortController(),
       events$: new Subject<JobEvent>(),
     };
 
     this.jobs.set(id, job);
     this.emit(job, 'status', { status: job.status });
-    void this.runDiscover(job);
+    await this.queueService.addDiscoverJob(id, bullPriority);
+    await this.refreshQueueMeta(job);
     return this.toSnapshot(job);
   }
 
-  getSnapshot(id: string): JobSnapshot {
+  async getSnapshot(id: string): Promise<JobSnapshot> {
     const job = this.getJob(id);
+    if (job.status === 'queued') {
+      await this.refreshQueueMeta(job);
+    }
     return this.toSnapshot(job);
+  }
+
+  async refreshAllQueuedPositions(): Promise<void> {
+    const tasks: Promise<void>[] = [];
+    for (const job of this.jobs.values()) {
+      if (job.status === 'queued') {
+        tasks.push(this.refreshQueueMeta(job));
+      }
+    }
+    await Promise.all(tasks);
   }
 
   getEventStream(id: string): Observable<MessageEvent> {
@@ -80,6 +122,7 @@ export class AkwamJobsService {
   async startProcessing(
     id: string,
     selectedIds: number[],
+    options: CreateJobOptions = {},
   ): Promise<JobSnapshot> {
     const job = this.getJob(id);
 
@@ -96,8 +139,18 @@ export class AkwamJobsService {
       throw new Error('لم يتم العثور على العناصر المحددة');
     }
 
+    const bypass = options.bypass ?? job.bypassedQueue;
+    const priority = this.queueService.resolveUserPriority(bypass);
+    const bullPriority = this.queueService.toBullPriority(priority, bypass);
+    job.priority = priority;
     job.selectedIds = selectedIds;
-    void this.runProcess(job, selected);
+    job.status = 'queued';
+    job.progress.phase = 'queue';
+    job.progress.message = 'في انتظار الدور لبدء المعالجة...';
+    this.emit(job, 'status', { status: job.status });
+
+    await this.queueService.addProcessJob(id, selectedIds, bullPriority);
+    await this.refreshQueueMeta(job);
     return this.toSnapshot(job);
   }
 
@@ -110,11 +163,34 @@ export class AkwamJobsService {
 
     job.abortController.abort();
     job.status = 'cancelled';
+    job.queuePosition = 0;
     job.progress.message = 'تم إلغاء البحث';
     this.emit(job, 'cancelled', { status: job.status });
     this.emit(job, 'status', { status: job.status });
     job.events$.complete();
     return this.toSnapshot(job);
+  }
+
+  async executeDiscover(jobId: string): Promise<void> {
+    const job = this.getJob(jobId);
+    job.queuePosition = 0;
+    job.status = 'discovering';
+    job.progress.phase = 'discover';
+    job.progress.message = 'جاري البحث في الموقع...';
+    this.emit(job, 'status', { status: job.status });
+    await this.runDiscover(job);
+  }
+
+  async executeProcess(jobId: string, selectedIds: number[]): Promise<void> {
+    const job = this.getJob(jobId);
+    const selected = job.candidates.filter((c) => selectedIds.includes(c.id));
+    if (!selected.length) {
+      this.failJob(job, new Error('لم يتم العثور على العناصر المحددة'));
+      return;
+    }
+    job.queuePosition = 0;
+    job.selectedIds = selectedIds;
+    await this.runProcess(job, selected);
   }
 
   private async runDiscover(job: Job): Promise<void> {
@@ -207,6 +283,34 @@ export class AkwamJobsService {
     }
   }
 
+  private async refreshQueueMeta(job: Job): Promise<void> {
+    const q = await this.queueService.getQueueStatus(job.id);
+    job.queuePosition = q.position;
+    job.queueTotal = q.waitingTotal;
+    job.queueAhead = q.ahead;
+
+    if (q.isActive) {
+      job.progress.message = 'جاري تنفيذ طلبك الآن...';
+    } else if (q.position > 0) {
+      const total =
+        q.waitingTotal > 0
+          ? ` من ${q.waitingTotal}`
+          : '';
+      job.progress.message = `موقعك في الطابور: ${q.position}${total}`;
+    } else {
+      job.progress.message = 'في انتظار الدور في الطابور...';
+    }
+
+    this.emit(job, 'queue', {
+      position: q.position,
+      waitingTotal: q.waitingTotal,
+      ahead: q.ahead,
+      isActive: q.isActive,
+      priority: job.priority,
+    });
+    this.emit(job, 'progress', { progress: job.progress });
+  }
+
   private updateProgress(job: Job, partial: Partial<ProgressState>): void {
     job.progress = { ...job.progress, ...partial };
     this.emit(job, 'progress', { progress: job.progress });
@@ -240,6 +344,11 @@ export class AkwamJobsService {
       progress: job.progress,
       results: job.results,
       error: job.error,
+      queuePosition: job.queuePosition,
+      queueTotal: job.queueTotal,
+      queueAhead: job.queueAhead,
+      priority: job.priority,
+      bypassedQueue: job.bypassedQueue,
     };
   }
 }

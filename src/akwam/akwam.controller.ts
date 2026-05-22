@@ -10,8 +10,11 @@ import {
   Sse,
   NotFoundException,
   Res,
+  UseGuards,
+  Req,
 } from '@nestjs/common';
-import { Response } from 'express';
+import { Request, Response } from 'express';
+import { UserRateLimitGuard } from '../queue/user-rate-limit.guard';
 import { Observable } from 'rxjs';
 import { AkwamService } from './akwam.service';
 import { AkwamJobsService } from './akwam-jobs.service';
@@ -43,6 +46,7 @@ export class AkwamController {
 
   /** Legacy synchronous search */
   @Post()
+  @UseGuards(UserRateLimitGuard)
   async search(@Query('search') search: string) {
     if (!search || search.trim() === '') {
       throw new BadRequestException(
@@ -56,17 +60,20 @@ export class AkwamController {
 
   /** Start async search job (discover → select → process) */
   @Post('jobs')
-  createJob(@Body('search') search: string) {
+  @UseGuards(UserRateLimitGuard)
+  createJob(@Body('search') search: string, @Req() req: Request) {
     if (!search || search.trim() === '') {
       throw new BadRequestException('يجب توفير كلمة البحث');
     }
-    return this.jobsService.createJob(search.trim());
+    return this.jobsService.createJob(search.trim(), {
+      bypass: !!req.queueBypass,
+    });
   }
 
   @Get('jobs/:id')
-  getJob(@Param('id') id: string) {
+  async getJob(@Param('id') id: string) {
     try {
-      return this.jobsService.getSnapshot(id);
+      return await this.jobsService.getSnapshot(id);
     } catch {
       throw new NotFoundException('المهمة غير موجودة');
     }
@@ -82,15 +89,19 @@ export class AkwamController {
   }
 
   @Post('jobs/:id/start')
+  @UseGuards(UserRateLimitGuard)
   async startJob(
     @Param('id') id: string,
     @Body('selectedIds') selectedIds: number[],
+    @Req() req: Request,
   ) {
     if (!Array.isArray(selectedIds) || selectedIds.length === 0) {
       throw new BadRequestException('يجب اختيار عنصر واحد على الأقل');
     }
     try {
-      return await this.jobsService.startProcessing(id, selectedIds);
+      return await this.jobsService.startProcessing(id, selectedIds, {
+        bypass: !!req.queueBypass,
+      });
     } catch (err) {
       throw new BadRequestException(
         err instanceof Error ? err.message : String(err),

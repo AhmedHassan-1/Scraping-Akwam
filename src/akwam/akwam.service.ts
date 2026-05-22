@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import axios from 'axios';
+import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
+import { ScrapeRateLimiterService } from '../queue/scrape-rate-limiter.service';
 import * as cheerio from 'cheerio';
 import type { Element } from 'domhandler';
 import { Movie, Series, Episode } from './interfaces/akwam.interfaces';
@@ -14,6 +15,8 @@ export type ProgressCallback = (progress: Partial<ProgressState>) => void;
 @Injectable()
 export class AkwamService {
   private readonly siteOrigin = 'https://ak.sv';
+
+  constructor(private readonly scrapeLimiter: ScrapeRateLimiterService) {}
 
   private readonly headers = {
     'user-agent':
@@ -48,12 +51,12 @@ export class AkwamService {
       total: 1,
     });
 
-    const searchRes = await axios.get(`https://ak.sv/search?q=${search}`, {
+    const searchRes = await this.scrapeGet(`https://ak.sv/search?q=${search}`, {
       headers: this.headers,
       responseType: 'arraybuffer',
       signal,
     });
-    const $ = cheerio.load(searchRes.data);
+    const $ = cheerio.load(Buffer.from(searchRes.data));
 
     const searchItems = $(
       '.site-container .page-search .container:nth-child(2) .widget .widget-body.row.flex-wrap .col-lg-auto.col-md-4.col-6.mb-12',
@@ -190,12 +193,12 @@ export class AkwamService {
       subTotal?: number,
     ) => void,
   ): Promise<{ movie?: Movie; series?: Series; episodes?: boolean } | null> {
-    const itemRes = await axios.get(link, {
+    const itemRes = await this.scrapeGet(link, {
       headers: this.headers,
       responseType: 'arraybuffer',
       signal,
     });
-    const $p = cheerio.load(itemRes.data);
+    const $p = cheerio.load(Buffer.from(itemRes.data));
 
     const coverRow = $p(
       '.page-movie.page-film .movie-cover.mb-4.without-cover .container .row.py-4',
@@ -285,12 +288,12 @@ export class AkwamService {
           epTotal,
         );
 
-        const epRes = await axios.get(epLink, {
+        const epRes = await this.scrapeGet(epLink, {
           headers: this.headers,
           responseType: 'arraybuffer',
           signal,
         });
-        const $e = cheerio.load(epRes.data);
+        const $e = cheerio.load(Buffer.from(epRes.data));
         const epTitle = $e(
           '.site-container .page-movie.page-film .movie-cover.mb-4.without-cover .pr-lg-4 h1 ',
         )
@@ -425,18 +428,26 @@ export class AkwamService {
       onQuality?.(key);
 
       try {
-        const dlRes = await axios.get(dlLink, {
+        const dlRes = await this.scrapeGet(dlLink, {
           headers: this.headers,
           responseType: 'arraybuffer',
           signal,
         });
-        const $d = cheerio.load(dlRes.data);
+        const $d = cheerio.load(Buffer.from(dlRes.data));
         const finalLink = $d(
           '.site-container .page-download .content a',
         ).attr('href');
         if (finalLink) target[key] = finalLink;
       } catch (_) {}
     }
+  }
+
+  private async scrapeGet(
+    url: string,
+    config: AxiosRequestConfig,
+  ): Promise<AxiosResponse<ArrayBuffer>> {
+    await this.scrapeLimiter.acquire();
+    return axios.get<ArrayBuffer>(url, config);
   }
 
   resolveMediaUrl(url: string): string {
@@ -477,7 +488,7 @@ export class AkwamService {
       throw new Error('رابط الصورة غير مسموح');
     }
 
-    const res = await axios.get(resolved, {
+    const res = await this.scrapeGet(resolved, {
       headers: { ...this.headers, Referer: `${this.siteOrigin}/` },
       responseType: 'arraybuffer',
       timeout: 15000,
