@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>أكوام — بحث الأفلام والمسلسلات</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="header">
+        <h1>أكوام</h1>
+        <p class="subtitle">ابحث عن أفلام ومسلسلات وحمّل الروابط</p>
+      </header>
+
+      <section class="search-panel card">
+        <form id="searchForm" class="search-form">
+          <input
+            type="text"
+            id="searchInput"
+            placeholder="اكتب اسم الفيلم أو المسلسل..."
+            autocomplete="off"
+            required
+          />
+          <button type="submit" id="searchBtn">بحث</button>
+          <button type="button" id="cancelBtn" class="btn-danger hidden">
+            إلغاء
+          </button>
+        </form>
+      </section>
+
+      <section id="progressSection" class="card hidden">
+        <div class="progress-header">
+          <span id="statusBadge" class="badge">جاري البحث</span>
+          <span id="progressText" class="progress-text"></span>
+        </div>
+        <div class="progress-bar-track">
+          <div id="progressBar" class="progress-bar-fill"></div>
+        </div>
+        <p id="progressMessage" class="progress-message"></p>
+      </section>
+
+      <section id="selectionSection" class="card hidden">
+        <h2>اختر النتائج المطلوبة</h2>
+        <p class="hint">تم العثور على عدة نتائج — حدد ما تريد معالجته قبل البدء</p>
+        <div class="selection-actions">
+          <button type="button" id="selectAllBtn" class="btn-secondary">
+            تحديد الكل
+          </button>
+          <button type="button" id="clearAllBtn" class="btn-secondary">
+            إلغاء التحديد
+          </button>
+        </div>
+        <div id="candidatesList" class="candidates-list"></div>
+        <button type="button" id="startProcessBtn" class="btn-primary">
+          بدء المعالجة
+        </button>
+      </section>
+
+      <section id="resultsSection" class="hidden">
+        <h2 class="results-title">النتائج</h2>
+        <div id="resultsContainer"></div>
+      </section>
+
+      <div id="toast" class="toast hidden"></div>
+    </div>
+    <script src="/app.js"></script>
+  </body>
+</html>
