@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>مشاهدة — أكوام</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/watch.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css"
+    />
+  </head>
+  <body class="watch-page">
+    <div class="watch-app">
+      <header class="watch-header">
+        <a href="/" class="back-link">← العودة للبحث</a>
+        <div class="watch-title-wrap">
+          <img id="watchPoster" class="watch-poster hidden" alt="" />
+          <div>
+            <h1 id="watchTitle">جاري التحميل...</h1>
+            <p id="watchSubtitle" class="watch-subtitle"></p>
+          </div>
+        </div>
+      </header>
+
+      <section class="watch-controls card" id="qualitySection">
+        <label for="qualitySelect">الجودة</label>
+        <select id="qualitySelect" class="quality-select"></select>
+      </section>
+
+      <section class="player-wrap card">
+        <video
+          id="player"
+          playsinline
+          controls
+          crossorigin
+          poster=""
+        ></video>
+        <p id="playerHint" class="player-hint hidden"></p>
+      </section>
+
+      <section class="watch-actions card">
+        <a id="downloadBtn" class="btn-primary" href="#" target="_blank" rel="noopener">
+          تحميل الرابط الحالي
+        </a>
+      </section>
+    </div>
+
+    <footer class="site-footer">
+      <p class="footer-made">Made by <strong>Ahmed Hassan</strong></p>
+      <nav class="footer-links" aria-label="تواصل مع المطور">
+        <a href="tel:+201142041272" class="footer-link">01142041272</a>
+        <a
+          href="https://www.facebook.com/Ahmed.Hassan219"
+          class="footer-link"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Facebook</a
+        >
+        <a
+          href="https://www.linkedin.com/in/ahmedhassan-ahmed"
+          class="footer-link"
+          target="_blank"
+          rel="noopener noreferrer"
+          >LinkedIn</a
+        >
+      </nav>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
+    <script src="/watch.js"></script>
+  </body>
+</html>

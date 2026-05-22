@@ -142,13 +142,11 @@ export class AkwamJobsService {
         return;
       }
 
-      if (candidates.length === 1) {
-        await this.runProcess(job, candidates);
-        return;
-      }
-
       job.status = 'awaiting_selection';
-      job.progress.message = `اختر من ${candidates.length} نتائج للمتابعة`;
+      job.progress.message =
+        candidates.length === 1
+          ? 'تم العثور على نتيجة واحدة — راجعها ثم اضغط «بدء المعالجة»'
+          : `اختر من ${candidates.length} نتائج ثم اضغط «بدء المعالجة»`;
       this.emit(job, 'status', { status: job.status });
     } catch (err) {
       if (job.abortController.signal.aborted) return;

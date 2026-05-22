@@ -16,7 +16,6 @@ const startProcessBtn = $('#startProcessBtn');
 const selectAllBtn = $('#selectAllBtn');
 const clearAllBtn = $('#clearAllBtn');
 const resultsContainer = $('#resultsContainer');
-const toast = $('#toast');
 
 let currentJobId = null;
 let eventSource = null;
@@ -42,6 +41,11 @@ const STATUS_LABELS = {
   failed: 'فشل',
 };
 
+const SWAL_BASE = {
+  confirmButtonText: 'حسناً',
+  customClass: { popup: 'swal-rtl' },
+};
+
 searchForm.addEventListener('submit', (e) => {
   e.preventDefault();
   startSearch();
@@ -51,6 +55,49 @@ cancelBtn.addEventListener('click', cancelSearch);
 startProcessBtn.addEventListener('click', startSelectedProcessing);
 selectAllBtn.addEventListener('click', () => toggleAllCandidates(true));
 clearAllBtn.addEventListener('click', () => toggleAllCandidates(false));
+
+function proxyImageUrl(url) {
+  if (!url?.trim()) return '';
+  return `/akwam/proxy-image?url=${encodeURIComponent(url.trim())}`;
+}
+
+function showError(title, text) {
+  return Swal.fire({
+    ...SWAL_BASE,
+    icon: 'error',
+    title,
+    text: text || undefined,
+  });
+}
+
+function showWarning(title, text) {
+  return Swal.fire({
+    ...SWAL_BASE,
+    icon: 'warning',
+    title,
+    text: text || undefined,
+  });
+}
+
+function showInfo(title, text) {
+  return Swal.fire({
+    ...SWAL_BASE,
+    icon: 'info',
+    title,
+    text: text || undefined,
+  });
+}
+
+function showSuccess(title, text) {
+  return Swal.fire({
+    ...SWAL_BASE,
+    icon: 'success',
+    title,
+    text: text || undefined,
+    timer: 2800,
+    showConfirmButton: true,
+  });
+}
 
 async function startSearch() {
   const query = searchInput.value.trim();
@@ -75,12 +122,15 @@ async function startSearch() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ search: query }),
     });
-    if (!res.ok) throw new Error(await res.text());
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || 'فشل بدء البحث');
+    }
     const job = await res.json();
     currentJobId = job.id;
     connectEvents(job.id);
   } catch (err) {
-    showToast(err.message || 'فشل بدء البحث');
+    await showError('فشل البحث', err.message || 'تعذر بدء عملية البحث');
     setBusy(false);
   }
 }
@@ -127,8 +177,11 @@ function applySnapshot(snap) {
     candidates = snap.candidates;
   }
 
-  if (snap.status === 'awaiting_selection' && snap.candidates?.length) {
-    showSelectionUI(snap.candidates);
+  if (snap.candidates?.length) {
+    const showPick =
+      snap.status === 'awaiting_selection' ||
+      snap.status === 'discovering';
+    if (showPick) showSelectionUI(snap.candidates);
   }
 
   if (snap.results?.length) {
@@ -136,8 +189,15 @@ function applySnapshot(snap) {
     renderResults(snap.results);
   }
 
+  if (snap.status === 'completed' && !snap.results?.length) {
+    void showNoResultsAlert();
+  }
+
   if (['completed', 'cancelled', 'failed'].includes(snap.status)) {
     setBusy(false);
+    if (snap.status === 'failed' && snap.error) {
+      void showError('فشلت العملية', snap.error);
+    }
   }
 }
 
@@ -147,14 +207,31 @@ function handleJobEvent(event) {
   switch (type) {
     case 'status':
       updateProgressUI({ status: data.status });
+      if (data.status === 'awaiting_selection' && candidates.length) {
+        showSelectionUI(candidates);
+      }
       if (['completed', 'cancelled', 'failed'].includes(data.status)) {
         setBusy(false);
         cleanupEvents();
+        if (data.status === 'cancelled') {
+          void showInfo('تم الإلغاء', 'تم إلغاء عملية البحث');
+        }
       }
       break;
 
     case 'candidates':
       candidates = data.candidates || [];
+      if (candidates.length === 0) {
+        void showNoResultsAlert();
+      } else {
+        showSelectionUI(candidates);
+        updateProgressUI({
+          message:
+            candidates.length === 1
+              ? 'تم العثور على نتيجة واحدة — راجعها ثم اضغط «بدء المعالجة»'
+              : `تم العثور على ${candidates.length} نتائج — اختر ثم اضغط «بدء المعالجة»`,
+        });
+      }
       break;
 
     case 'progress':
@@ -171,18 +248,25 @@ function handleJobEvent(event) {
       }
       break;
 
-    case 'complete':
-      resultsSection.classList.remove('hidden');
-      renderResults(data.results || []);
+    case 'complete': {
+      const results = data.results || [];
+      if (!results.length) {
+        void showNoResultsAlert();
+      } else {
+        resultsSection.classList.remove('hidden');
+        renderResults(results);
+        void showSuccess('اكتمل البحث', 'تم جلب الروابط بنجاح');
+      }
       updateProgressUI({
         status: 'completed',
-        message: 'اكتمل البحث بنجاح',
+        message: results.length ? 'اكتمل البحث بنجاح' : 'لا توجد نتائج',
         current: 1,
         total: 1,
       });
       setBusy(false);
       cleanupEvents();
       break;
+    }
 
     case 'cancelled':
       updateProgressUI({
@@ -194,20 +278,73 @@ function handleJobEvent(event) {
       break;
 
     case 'error':
-      showToast(data.message || 'حدث خطأ');
+      void showError('حدث خطأ', data.message || 'حدث خطأ غير متوقع');
       updateProgressUI({ status: 'failed', message: data.message });
       setBusy(false);
       cleanupEvents();
       break;
   }
+}
 
-  if (type === 'status' && data.status === 'awaiting_selection') {
-    showSelectionUI(candidates);
-  }
+function showNoResultsAlert() {
+  return showWarning(
+    'لا توجد نتائج',
+    'لم يتم العثور على أي فيلم أو مسلسل يطابق بحثك. جرّب كلمات مختلفة.',
+  );
+}
+
+function thumbPlaceholderHtml() {
+  return '<div class="candidate-thumb-wrap"><div class="candidate-thumb placeholder" aria-hidden="true">🎬</div></div>';
+}
+
+function buildThumbHtml(imageUrl, altText) {
+  const direct = imageUrl?.trim() || '';
+  if (!direct) return thumbPlaceholderHtml();
+  const proxied = proxyImageUrl(direct);
+  return `<div class="candidate-thumb-wrap"><img class="candidate-thumb" src="${escapeAttr(proxied)}" data-direct="${escapeAttr(direct)}" data-proxied="${escapeAttr(proxied)}" alt="${escapeAttr(altText || '')}" loading="lazy" crossorigin="anonymous" referrerpolicy="no-referrer" /></div>`;
+}
+
+function attachThumbFallback(img) {
+  img.addEventListener('error', () => {
+    const direct = img.dataset.direct;
+    const proxied = img.dataset.proxied;
+    const step = img.dataset.fallbackStep || '0';
+
+    if (step === '0' && direct && img.src !== direct) {
+      img.dataset.fallbackStep = '1';
+      img.src = direct;
+      return;
+    }
+    if (step === '1' && proxied && img.src !== proxied) {
+      img.dataset.fallbackStep = '2';
+      img.src = proxied;
+      return;
+    }
+
+    if (img.classList.contains('result-poster')) {
+      img.replaceWith(
+        Object.assign(document.createElement('div'), {
+          className: 'result-poster placeholder',
+          textContent: '🎬',
+        }),
+      );
+      return;
+    }
+
+    const wrap = img.parentElement;
+    if (wrap) wrap.outerHTML = thumbPlaceholderHtml();
+  });
 }
 
 function showSelectionUI(items) {
   selectionSection.classList.remove('hidden');
+  const hint = selectionSection.querySelector('.hint');
+  if (hint) {
+    hint.textContent =
+      items.length === 1
+        ? 'نتيجة واحدة — يمكنك المتابعة مباشرة أو تغيير الاختيار'
+        : 'تم العثور على عدة نتائج — حدد ما تريد معالجته قبل البدء';
+  }
   candidatesList.innerHTML = '';
 
   items.forEach((c) => {
@@ -215,14 +352,12 @@ function showSelectionUI(items) {
     el.className = 'candidate-item selected';
     el.innerHTML = `
       <input type="checkbox" checked data-id="${c.id}" />
-      ${
-        c.image
-          ? `<img class="candidate-thumb" src="${escapeAttr(c.image)}" alt="" onerror="this.style.display='none'" />`
-          : '<div class="candidate-thumb"></div>'
-      }
+      ${buildThumbHtml(c.image, c.title)}
       <div class="candidate-info"><h3>${escapeHtml(c.title)}</h3></div>
     `;
     const checkbox = el.querySelector('input');
+    const img = el.querySelector('img');
+    if (img) attachThumbFallback(img);
     checkbox.addEventListener('change', () => {
       el.classList.toggle('selected', checkbox.checked);
     });
@@ -243,7 +378,7 @@ async function startSelectedProcessing() {
     (cb) => Number(cb.dataset.id),
   );
   if (!selectedIds.length) {
-    showToast('اختر عنصراً واحداً على الأقل');
+    await showWarning('لم تختر شيئاً', 'اختر عنصراً واحداً على الأقل للمتابعة');
     return;
   }
 
@@ -261,7 +396,7 @@ async function startSelectedProcessing() {
       throw new Error(err.message || (await res.text()));
     }
   } catch (err) {
-    showToast(err.message || 'فشل بدء المعالجة');
+    await showError('فشل المعالجة', err.message || 'تعذر بدء المعالجة');
     selectionSection.classList.remove('hidden');
     startProcessBtn.disabled = false;
   }
@@ -306,8 +441,17 @@ function updateProgressUI({ status, message, current, total, completedItems }) {
 
 function renderResults(data) {
   if (!Array.isArray(data) || !data.length) {
-    resultsContainer.innerHTML =
-      '<p class="hint">لا توجد نتائج لعرضها.</p>';
+    resultsContainer.innerHTML = '';
+    return;
+  }
+
+  const hasContent = data.some(
+    (g) => Array.isArray(g) && g.length >= 2 && g.slice(1).length > 0,
+  );
+
+  if (!hasContent) {
+    resultsContainer.innerHTML = '';
+    void showNoResultsAlert();
     return;
   }
 
@@ -317,10 +461,11 @@ function renderResults(data) {
     if (!Array.isArray(group) || group.length < 2) continue;
     const groupType = group[0];
     const items = group.slice(1);
+    if (!items.length) continue;
 
     const section = document.createElement('div');
     section.className = 'result-group';
-    section.innerHTML = `<h3>${groupType === 'Movies' ? 'أفلام' : 'مسلسلات'}</h3>`;
+    section.innerHTML = `<h3>${groupType === 'Movies' ? '🎬 أفلام' : '📺 مسلسلات'}</h3>`;
 
     for (const item of items) {
       section.appendChild(renderItemCard(item, groupType === 'Series'));
@@ -330,11 +475,40 @@ function renderResults(data) {
   }
 }
 
+function extractQualities(obj) {
+  return Object.keys(obj)
+    .filter(
+      (k) =>
+        !META_KEYS.has(k) && !k.endsWith('_') && typeof obj[k] === 'string',
+    )
+    .map((label) => ({
+      label,
+      url: obj[label],
+      size: obj[`${label}_`] || '',
+    }))
+    .filter((q) => q.url?.startsWith('http'));
+}
+
+function openWatchPage(payload) {
+  try {
+    sessionStorage.setItem('akwamWatch', JSON.stringify(payload));
+    window.location.href = '/watch.html';
+  } catch {
+    void showError('تعذر الفتح', 'لا يمكن فتح صفحة المشاهدة');
+  }
+}
+
 function renderItemCard(item, isSeries) {
-  const card = document.createElement('div');
+  const card = document.createElement('article');
   card.className = 'result-card';
 
-  const metaRows = [
+  const posterDirect = item.Image?.trim() || '';
+  const posterProxied = posterDirect ? proxyImageUrl(posterDirect) : '';
+  const posterHtml = posterDirect
+    ? `<img class="result-poster" src="${escapeAttr(posterProxied)}" data-direct="${escapeAttr(posterDirect)}" data-proxied="${escapeAttr(posterProxied)}" alt="" loading="lazy" crossorigin="anonymous" referrerpolicy="no-referrer" />`
+    : '<div class="result-poster placeholder">🎬</div>';
+
+  const chips = [
     ['التقييم', item.Rating],
     ['اللغة', item.Lang],
     ['الجودة', item.Quality],
@@ -345,23 +519,45 @@ function renderItemCard(item, isSeries) {
     .filter(([, v]) => v)
     .map(
       ([k, v]) =>
-        `<dt>${k}:</dt><dd>${escapeHtml(String(v))}</dd>`,
+        `<span class="meta-chip"><strong>${k}:</strong> ${escapeHtml(String(v))}</span>`,
     )
     .join('');
 
+  const allQualities = isSeries ? [] : extractQualities(item);
+
   card.innerHTML = `
-    <div class="result-header">
-      ${
-        item.Image
-          ? `<img class="result-poster" src="${escapeAttr(item.Image)}" alt="" onerror="this.style.display='none'" />`
-          : ''
-      }
-      <div>
+    <div class="result-hero">
+      <div class="result-poster-wrap">${posterHtml}</div>
+      <div class="result-body">
         <h3>${escapeHtml(item.Title || '')}</h3>
-        <dl class="result-meta">${metaRows}</dl>
+        <div class="result-meta">${chips}</div>
+        ${
+          allQualities.length
+            ? `<div class="result-actions-top">
+            <button type="button" class="btn-watch watch-all-btn">▶ مشاهدة (أعلى جودة)</button>
+          </div>`
+            : ''
+        }
       </div>
     </div>
+    <div class="result-content"></div>
   `;
+
+  const content = card.querySelector('.result-content');
+  const posterImg = card.querySelector('.result-poster');
+  if (posterImg?.tagName === 'IMG') attachThumbFallback(posterImg);
+
+  const watchAllBtn = card.querySelector('.watch-all-btn');
+  if (watchAllBtn && allQualities.length) {
+    watchAllBtn.addEventListener('click', () => {
+      openWatchPage({
+        title: item.Title,
+        subtitle: item.Quality || '',
+        poster: item.Image,
+        sources: allQualities,
+      });
+    });
+  }
 
   if (isSeries) {
     const epKey = item.Title;
@@ -371,51 +567,69 @@ function renderItemCard(item, isSeries) {
       epSection.className = 'episodes';
       epSection.innerHTML = '<h4>الحلقات</h4>';
       for (const ep of episodes) {
-        epSection.appendChild(renderEpisode(ep));
+        epSection.appendChild(renderEpisode(ep, item.Image, item.Title));
       }
-      card.appendChild(epSection);
+      content.appendChild(epSection);
     }
   } else {
-    card.appendChild(renderQualities(item));
+    content.appendChild(
+      renderQualitiesList(allQualities, item.Title, item.Image),
+    );
   }
 
   return card;
 }
 
-function renderEpisode(ep) {
+function renderEpisode(ep, seriesPoster, seriesTitle) {
   const block = document.createElement('div');
   block.className = 'episode-block';
+  const qualities = extractQualities(ep);
   block.innerHTML = `<h5>${escapeHtml(ep.Title || '')}</h5>`;
-  block.appendChild(renderQualities(ep));
+  block.appendChild(
+    renderQualitiesList(qualities, `${seriesTitle} — ${ep.Title}`, seriesPoster),
+  );
   return block;
 }
 
-function renderQualities(obj) {
+function renderQualitiesList(qualities, title, poster) {
   const wrap = document.createElement('div');
   wrap.className = 'qualities';
-  wrap.innerHTML = '<h4>روابط التحميل</h4>';
+  wrap.innerHTML = '<h4>الجودات المتاحة</h4>';
 
-  const keys = Object.keys(obj).filter(
-    (k) => !META_KEYS.has(k) && !k.endsWith('_') && typeof obj[k] === 'string',
-  );
-
-  if (!keys.length) {
+  if (!qualities.length) {
     wrap.innerHTML += '<p class="hint">لا توجد روابط بعد</p>';
     return wrap;
   }
 
-  for (const q of keys) {
-    const url = obj[q];
-    const size = obj[`${q}_`] || '';
-    const a = document.createElement('a');
-    a.className = 'quality-link';
-    a.href = url;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-    a.innerHTML = `<span>${escapeHtml(q)}</span><span class="size">${escapeHtml(size)}</span>`;
-    wrap.appendChild(a);
+  const list = document.createElement('div');
+  list.className = 'quality-list';
+
+  for (const q of qualities) {
+    const row = document.createElement('div');
+    row.className = 'quality-row';
+    row.innerHTML = `
+      <div>
+        <div class="quality-label">${escapeHtml(q.label)}</div>
+        ${q.size ? `<div class="quality-size">${escapeHtml(q.size)}</div>` : ''}
+      </div>
+      <div class="quality-actions">
+        <button type="button" class="btn-watch" data-action="watch">▶ مشاهدة</button>
+        <a class="quality-download" href="${escapeAttr(q.url)}" target="_blank" rel="noopener noreferrer">تحميل</a>
+      </div>
+    `;
+    row.querySelector('[data-action="watch"]').addEventListener('click', () => {
+      openWatchPage({
+        title,
+        subtitle: q.label + (q.size ? ` — ${q.size}` : ''),
+        poster,
+        sources: qualities,
+        startQuality: q.label,
+      });
+    });
+    list.appendChild(row);
   }
 
+  wrap.appendChild(list);
   return wrap;
 }
 
@@ -436,17 +650,11 @@ function cleanupJob() {
   cleanupEvents();
   currentJobId = null;
   candidates = [];
-}
-
-function showToast(msg, type = 'error') {
-  toast.textContent = msg;
-  toast.className = `toast ${type === 'info' ? 'info' : ''}`;
-  toast.classList.remove('hidden');
-  setTimeout(() => toast.classList.add('hidden'), 4000);
+  startProcessBtn.disabled = false;
 }
 
 function escapeHtml(str) {
-  return str
+  return String(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')

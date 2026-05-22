@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
+import type { Element } from 'domhandler';
 import { Movie, Series, Episode } from './interfaces/akwam.interfaces';
 import {
   ProgressState,
@@ -12,6 +13,8 @@ export type ProgressCallback = (progress: Partial<ProgressState>) => void;
 
 @Injectable()
 export class AkwamService {
+  private readonly siteOrigin = 'https://ak.sv';
+
   private readonly headers = {
     'user-agent':
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',
@@ -69,12 +72,14 @@ export class AkwamService {
         $(item).find('h3 a').text().trim() ||
         'بدون عنوان';
 
-      const image =
-        $(item).find('.entry-image img').attr('src') ||
-        $(item).find('.entry-image img').attr('data-src') ||
-        '';
+      const image = this.extractEntryImage($, item);
 
-      candidates.push({ id: id++, title, image, url: link });
+      candidates.push({
+        id: id++,
+        title,
+        image,
+        url: this.resolveMediaUrl(link),
+      });
     }
 
     onProgress?.({
@@ -432,5 +437,109 @@ export class AkwamService {
         if (finalLink) target[key] = finalLink;
       } catch (_) {}
     }
+  }
+
+  resolveMediaUrl(url: string): string {
+    if (!url?.trim()) return '';
+    const trimmed = url.trim();
+    if (trimmed.startsWith('data:')) return '';
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    if (trimmed.startsWith('//')) return `https:${trimmed}`;
+    if (trimmed.startsWith('/')) return `${this.siteOrigin}${trimmed}`;
+    return `${this.siteOrigin}/${trimmed}`;
+  }
+
+  isAllowedProxyUrl(url: string): boolean {
+    try {
+      const parsed = new URL(url);
+      if (!['http:', 'https:'].includes(parsed.protocol)) return false;
+      const host = parsed.hostname.toLowerCase();
+      if (
+        host === 'localhost' ||
+        host === '127.0.0.1' ||
+        host.startsWith('192.168.') ||
+        host.startsWith('10.') ||
+        host.endsWith('.local')
+      ) {
+        return false;
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async fetchProxiedImage(
+    url: string,
+  ): Promise<{ buffer: Buffer; contentType: string }> {
+    const resolved = this.resolveMediaUrl(url);
+    if (!resolved || !this.isAllowedProxyUrl(resolved)) {
+      throw new Error('رابط الصورة غير مسموح');
+    }
+
+    const res = await axios.get(resolved, {
+      headers: { ...this.headers, Referer: `${this.siteOrigin}/` },
+      responseType: 'arraybuffer',
+      timeout: 15000,
+      validateStatus: (s) => s >= 200 && s < 400,
+    });
+
+    const contentType =
+      (res.headers['content-type'] as string) || 'image/jpeg';
+    return { buffer: Buffer.from(res.data), contentType };
+  }
+
+  private extractEntryImage($: cheerio.CheerioAPI, item: Element): string {
+    const entry = $(item).find('.entry-image').first();
+    const imgEl = entry.find('img').first();
+
+    const candidates: string[] = [
+      imgEl.attr('data-src'),
+      imgEl.attr('data-lazy-src'),
+      imgEl.attr('data-original'),
+      imgEl.attr('data-lazy-srcset'),
+      imgEl.attr('data-srcset'),
+      imgEl.attr('srcset'),
+      imgEl.attr('src'),
+    ]
+      .filter(Boolean)
+      .flatMap((v) => {
+        if (v!.includes(',')) return [this.firstSrcFromSrcset(v)];
+        return [v!];
+      });
+
+    entry.find('source').each((_, src) => {
+      const srcset = $(src).attr('srcset');
+      const srcAttr = $(src).attr('src');
+      if (srcset) candidates.push(this.firstSrcFromSrcset(srcset));
+      if (srcAttr) candidates.push(srcAttr);
+    });
+
+    const style = `${entry.attr('style') || ''} ${imgEl.attr('style') || ''}`;
+    const bgMatch = style.match(/url\(\s*['"]?([^'")\s]+)['"]?\s*\)/i);
+    if (bgMatch?.[1]) candidates.push(bgMatch[1]);
+
+    for (const raw of candidates) {
+      const resolved = this.resolveMediaUrl(raw);
+      if (resolved && !this.isPlaceholderImage(resolved)) return resolved;
+    }
+    return '';
+  }
+
+  private isPlaceholderImage(url: string): boolean {
+    const lower = url.toLowerCase();
+    return (
+      lower.includes('placeholder') ||
+      lower.includes('1x1') ||
+      lower.includes('blank.') ||
+      lower.endsWith('.svg') ||
+      /\/spacer[./]/i.test(lower)
+    );
+  }
+
+  private firstSrcFromSrcset(srcset?: string): string {
+    if (!srcset) return '';
+    const first = srcset.split(',')[0]?.trim().split(/\s+/)[0];
+    return first || '';
   }
 }

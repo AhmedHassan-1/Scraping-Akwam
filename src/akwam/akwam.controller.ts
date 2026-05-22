@@ -9,7 +9,9 @@ import {
   BadRequestException,
   Sse,
   NotFoundException,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { Observable } from 'rxjs';
 import { AkwamService } from './akwam.service';
 import { AkwamJobsService } from './akwam-jobs.service';
@@ -20,6 +22,24 @@ export class AkwamController {
     private readonly akwamService: AkwamService,
     private readonly jobsService: AkwamJobsService,
   ) {}
+
+  @Get('proxy-image')
+  async proxyImage(@Query('url') url: string, @Res() res: Response) {
+    if (!url?.trim()) {
+      throw new BadRequestException('رابط الصورة مطلوب');
+    }
+    try {
+      const { buffer, contentType } =
+        await this.akwamService.fetchProxiedImage(url);
+      res.set({
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=86400',
+      });
+      res.send(buffer);
+    } catch {
+      throw new NotFoundException('تعذر تحميل الصورة');
+    }
+  }
 
   /** Legacy synchronous search */
   @Post()
