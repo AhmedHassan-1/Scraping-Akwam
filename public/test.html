@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Simple Video Player</title>
+
+    <style>
+      body {
+        background: #111;
+        color: white;
+        font-family: Arial;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 30px;
+      }
+
+      input {
+        width: 80%;
+        padding: 12px;
+        border-radius: 8px;
+        border: none;
+        margin-bottom: 10px;
+        background: #222;
+        color: white;
+      }
+
+      button {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        margin-bottom: 20px;
+      }
+
+      video {
+        width: 80%;
+        max-width: 900px;
+        border-radius: 10px;
+        background: black;
+      }
+
+      #status {
+        margin-top: 15px;
+        font-size: 14px;
+        color: #aaa;
+      }
+    </style>
+  </head>
+
+  <body>
+    <h2>Simple Video Player</h2>
+
+    <input id="url" placeholder="ضع رابط الفيديو هنا" />
+    <button onclick="playVideo()">تشغيل</button>
+
+    <video id="video" controls></video>
+
+    <div id="status"></div>
+
+    <script>
+      const video = document.getElementById("video");
+      const status = document.getElementById("status");
+
+      function playVideo() {
+        const url = document.getElementById("url").value.trim();
+
+        if (!url) {
+          alert("حط لينك الفيديو");
+          return;
+        }
+
+        status.innerText = "Loading...";
+
+        // أهم نقطة: امسح أي source قديم
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+
+        // تشغيل مباشر
+        video.src = url;
+
+        video.onloadeddata = () => {
+          status.innerText = "Loaded ✅";
+        };
+
+        video.onplaying = () => {
+          status.innerText = "Playing ▶️";
+        };
+
+        video.onerror = () => {
+          status.innerText = "Error ❌ الفيديو مش شغال أو السيرفر مانع التشغيل";
+        };
+      }
+    </script>
+  </body>
+</html>

@@ -1,3 +1,7 @@
+/* watch.css — v4: Definitive fix for poster + fullscreen + layout */
+
+/* ─── Base ───────────────────────────── */
+
 .watch-page {
   background: #05080c;
 }
@@ -6,17 +10,24 @@
   max-width: 1100px;
   margin: 0 auto;
   padding: 1.5rem 1.25rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 }
 
 .watch-header {
-  margin-bottom: 1.25rem;
+  margin-bottom: 0.25rem;
 }
 
+/* ─── Back Link ─────────────────────── */
+
 .back-link {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   color: var(--text-muted);
   text-decoration: none;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   margin-bottom: 1rem;
   transition: color 0.15s;
 }
@@ -24,6 +35,8 @@
 .back-link:hover {
   color: var(--accent);
 }
+
+/* ─── Header Info ────────────────────── */
 
 .watch-title-wrap {
   display: flex;
@@ -51,6 +64,8 @@
   margin-top: 0.35rem;
 }
 
+/* ─── Quality Controls ───────────────── */
+
 .watch-controls {
   display: flex;
   align-items: center;
@@ -75,27 +90,195 @@
   font-size: 0.95rem;
 }
 
+/* ─── Player Wrapper ─────────────────── */
+
 .player-wrap {
   padding: 0;
+  border-radius: 14px;
+  background: #000;
   overflow: hidden;
+  /* CRITICAL: establish a proper stacking context
+     so nothing inside ever escapes this box */
+  position: relative;
+  isolation: isolate;
+  /* Subtle glow for polish */
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
 }
 
-.player-wrap video {
+/* ─────────────────────────────────────────────
+   PLYR NORMAL STATE
+   
+   Strategy: let Plyr's own padding-top ratio trick work,
+   but make sure .plyr__video-wrapper stays IN the document
+   flow (position: relative, not absolute) so it has a
+   real height the parent can measure.
+───────────────────────────────────────────── */
+
+.plyr--video {
+  display: block;
   width: 100%;
-  max-height: 70vh;
+  background: #000;
+  border-radius: 0;
+}
+
+/* Keep wrapper in flow — Plyr adds inline padding-top for aspect ratio */
+.plyr__video-wrapper {
+  position: relative !important;
+  width: 100%;
+  background: #000;
+  /* padding-top is set inline by Plyr (e.g. 56.25% for 16:9) */
+}
+
+/* Video fills the wrapper via absolute positioning */
+.plyr--video .plyr__video-wrapper > video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
   background: #000;
 }
 
+/* ─────────────────────────────────────────────
+   POSTER / THUMBNAIL — DEFINITIVE FIX
+   
+   Root cause of the "poster goes fullscreen" bug:
+   Plyr's .plyr__poster is position:absolute but the
+   stacking context wasn't isolated, so it could paint
+   on top of everything.
+   
+   Fix: hide Plyr's poster overlay entirely.
+   We rely ONLY on the native <video poster="..."> attribute,
+   which the browser renders correctly inside the video rect
+   and never escapes outside it — in normal mode OR fullscreen.
+───────────────────────────────────────────── */
+
+/* Disable Plyr's own poster overlay — we use native <video poster> */
+.plyr__poster {
+  display: none !important;
+}
+
+/* ─────────────────────────────────────────────
+   FULLSCREEN
+───────────────────────────────────────────── */
+
+/* Browser fullscreen root reset */
+:fullscreen {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+:-webkit-full-screen {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+:-moz-full-screen {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+:-ms-fullscreen {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Plyr container fills viewport */
+.plyr:fullscreen,
+.plyr:-webkit-full-screen,
+.plyr:-moz-full-screen,
+.plyr:-ms-fullscreen {
+  width: 100vw !important;
+  height: 100vh !important;
+  background: #000 !important;
+  border-radius: 0 !important;
+  /* Establish stacking context in fullscreen too */
+  position: relative !important;
+  isolation: isolate !important;
+}
+
+/* In fullscreen: the ratio trick no longer applies.
+   Switch wrapper to fill all space except controls bar. */
+.plyr:fullscreen .plyr__video-wrapper,
+.plyr:-webkit-full-screen .plyr__video-wrapper,
+.plyr:-moz-full-screen .plyr__video-wrapper,
+.plyr:-ms-fullscreen .plyr__video-wrapper {
+  position: absolute !important;
+  inset: 0 0 44px 0 !important; /* leave 44px at bottom for controls */
+  width: 100% !important;
+  height: auto !important;
+  padding-top: 0 !important; /* cancel the ratio padding */
+}
+
+/* Video in fullscreen: letterbox/pillarbox */
+.plyr:fullscreen .plyr__video-wrapper > video,
+.plyr:-webkit-full-screen .plyr__video-wrapper > video,
+.plyr:-moz-full-screen .plyr__video-wrapper > video,
+.plyr:-ms-fullscreen .plyr__video-wrapper > video {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+}
+
+/* Controls bar at bottom */
+.plyr:fullscreen .plyr__controls,
+.plyr:-webkit-full-screen .plyr__controls,
+.plyr:-moz-full-screen .plyr__controls,
+.plyr:-ms-fullscreen .plyr__controls {
+  position: absolute !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 10 !important;
+}
+
+/* ─── Fallback fullscreen ────────────── */
+
+.plyr--fullscreen-fallback {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background: #000 !important;
+  z-index: 9999 !important;
+  border-radius: 0 !important;
+  isolation: isolate !important;
+}
+
+.plyr--fullscreen-fallback .plyr__video-wrapper {
+  position: absolute !important;
+  inset: 0 0 44px 0 !important;
+  padding-top: 0 !important;
+  width: 100% !important;
+  height: auto !important;
+}
+
+.plyr--fullscreen-fallback .plyr__video-wrapper > video {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+}
+
+.plyr--fullscreen-fallback .plyr__controls {
+  position: absolute !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 10 !important;
+}
+
+/* ─── Hint ───────────────────────────── */
+
 .player-hint {
-  padding: 1rem 1.25rem;
+  padding: 0.9rem 1.25rem;
   color: var(--text-muted);
   font-size: 0.88rem;
   border-top: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
 }
 
-.plyr--video {
-  border-radius: 0;
-}
+/* ─── Actions ───────────────────────── */
 
 .watch-actions {
   text-align: center;
@@ -105,4 +288,21 @@
   width: auto;
   min-width: 220px;
   margin-top: 0;
+}
+
+/* ─── Responsive ─────────────────────── */
+
+@media (max-width: 600px) {
+  .watch-app {
+    padding: 1rem 0.75rem 2rem;
+  }
+
+  .watch-header h1 {
+    font-size: 1.1rem;
+  }
+
+  .watch-poster {
+    width: 56px;
+    height: 80px;
+  }
 }

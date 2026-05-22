@@ -1,173 +1,277 @@
 const $ = (sel) => document.querySelector(sel);
 
-const watchTitle = $('#watchTitle');
-const watchSubtitle = $('#watchSubtitle');
-const watchPoster = $('#watchPoster');
-const qualitySelect = $('#qualitySelect');
-const qualitySection = $('#qualitySection');
-const downloadBtn = $('#downloadBtn');
-const playerHint = $('#playerHint');
-const video = $('#player');
+const watchTitle = $("#watchTitle");
+const watchSubtitle = $("#watchSubtitle");
+const watchPoster = $("#watchPoster");
+const qualitySection = $("#qualitySection");
+const downloadBtn = $("#downloadBtn");
+const playerHint = $("#playerHint");
+const video = $("#player");
 
 let player = null;
 let sources = [];
+let currentIndex = 0;
+let errorCount = 0;
+let retryTimer = null;
+let blobUrlCache = {};
+let data = null;
 
-const SWAL_BASE = {
-  confirmButtonText: 'حسناً',
-};
+/* ─────────────────────────────────────────────
+   HELPERS
+───────────────────────────────────────────── */
 
-function guessMime(url) {
-  const lower = url.toLowerCase();
-  if (lower.includes('.m3u8')) return 'application/x-mpegURL';
-  if (lower.includes('.webm')) return 'video/webm';
-  if (lower.includes('.mkv')) return 'video/x-matroska';
-  if (lower.includes('.mp4') || lower.includes('.m4v')) return 'video/mp4';
-  return 'video/mp4';
+function qualitySize(label = "") {
+  const n = (label || "").match(/(\d{3,4})/);
+  if (n) return parseInt(n[1], 10);
+  if (/4k|2160/i.test(label)) return 2160;
+  if (/fhd/i.test(label)) return 1080;
+  if (/hd/i.test(label)) return 720;
+  return 0;
 }
 
-function isLikelyStreamable(url) {
-  const lower = url.toLowerCase();
-  return (
-    lower.includes('.mp4') ||
-    lower.includes('.m4v') ||
-    lower.includes('.webm') ||
-    lower.includes('.m3u8') ||
-    lower.includes('video') ||
-    !/\.(mkv|avi|rar|zip|torrent)(\?|$)/i.test(lower)
-  );
+function isNonStreamable(url) {
+  return /\.(mkv|avi|rar|zip|torrent)(\?|$)/i.test(url.toLowerCase());
 }
 
-function initPlyr() {
-  if (typeof Plyr === 'undefined') return null;
-  return new Plyr(video, {
-    ratio: '16:9',
-    fullscreen: { enabled: true },
-    controls: [
-      'play-large',
-      'play',
-      'progress',
-      'current-time',
-      'mute',
-      'volume',
-      'settings',
-      'pip',
-      'airplay',
-      'fullscreen',
-    ],
-    settings: ['quality', 'speed'],
-    i18n: {
-      play: 'تشغيل',
-      pause: 'إيقاف',
-      mute: 'كتم',
-      unmute: 'إلغاء الكتم',
-      enterFullscreen: 'ملء الشاشة',
-      exitFullscreen: 'خروج من ملء الشاشة',
-      settings: 'الإعدادات',
-      speed: 'السرعة',
-      quality: 'الجودة',
-    },
-  });
+function showHint(msg) {
+  playerHint.textContent = msg;
+  playerHint.classList.remove("hidden");
+}
+function hideHint() {
+  playerHint.classList.add("hidden");
 }
 
-function setSource(index) {
+/* ─────────────────────────────────────────────
+   POSTER HELPER
+   
+   We ONLY use the native <video poster="..."> attribute.
+   Plyr's own .plyr__poster overlay is hidden via CSS
+   (display:none) to avoid the fullscreen escape bug.
+   
+   The browser always renders the native poster correctly
+   inside the video rect — it never escapes in FS.
+───────────────────────────────────────────── */
+
+function applyPoster(posterUrl) {
+  if (!posterUrl || !player?.media) return;
+  player.media.setAttribute("poster", posterUrl);
+}
+
+/* ─────────────────────────────────────────────
+   BLOB FALLBACK
+───────────────────────────────────────────── */
+
+async function tryBlob(url) {
+  if (blobUrlCache[url]) return blobUrlCache[url];
+  try {
+    const res = await fetch(url, { mode: "cors" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    blobUrlCache[url] = objectUrl;
+    return objectUrl;
+  } catch {
+    return null;
+  }
+}
+
+function revokeAllBlobs() {
+  Object.values(blobUrlCache).forEach(URL.revokeObjectURL.bind(URL));
+  blobUrlCache = {};
+}
+
+/* ─────────────────────────────────────────────
+   CORE SOURCE HANDLER
+───────────────────────────────────────────── */
+
+async function applySource(index, preserveTime) {
   const src = sources[index];
   if (!src) return;
 
-  qualitySelect.value = String(index);
+  currentIndex = index;
   downloadBtn.href = src.url;
+  downloadBtn.download = "";
+  watchSubtitle.textContent = src.label + (src.size ? ` — ${src.size}` : "");
 
-  const streamable = isLikelyStreamable(src.url);
-
-  if (player) {
-    player.stop();
-    player.destroy();
-    player = null;
+  if (isNonStreamable(src.url)) {
+    showHint("هذا الرابط لا يُشغَّل مباشرةً في المتصفح. استخدم زر التحميل.");
+    return;
   }
 
-  video.removeAttribute('src');
-  video.innerHTML = '';
+  hideHint();
 
-  if (streamable) {
-    const sourceEl = document.createElement('source');
-    sourceEl.src = src.url;
-    sourceEl.type = guessMime(src.url);
-    video.appendChild(sourceEl);
-    playerHint.classList.add('hidden');
-    video.load();
-    player = initPlyr();
-    if (player) void player.play().catch(() => {});
-  } else {
-    playerHint.textContent =
-      'هذا الرابط قد لا يُشغَّل مباشرة في المتصفح (مثل MKV). استخدم زر التحميل أو جرّب جودة أخرى.';
-    playerHint.classList.remove('hidden');
-    player = initPlyr();
+  const media = player.media;
+  const savedTime = preserveTime ? media.currentTime : 0;
+  const wasPlaying = preserveTime ? !media.paused : true;
+
+  media.pause();
+  media.removeAttribute("src");
+
+  // Re-set poster before load() so it shows during buffering
+  if (data._poster) media.setAttribute("poster", data._poster);
+
+  media.load();
+
+  function onCanPlay() {
+    if (savedTime > 1) media.currentTime = savedTime;
+    if (wasPlaying) player.play().catch(() => {});
   }
 
-  watchSubtitle.textContent = `${src.label}${src.size ? ` — ${src.size}` : ''}`;
+  media.addEventListener("canplay", onCanPlay, { once: true });
+
+  async function onMediaError() {
+    media.removeEventListener("canplay", onCanPlay);
+    showHint(`جارٍ محاولة طريقة بديلة لـ "${src.label}"…`);
+    const blobUrl = await tryBlob(src.url);
+    if (blobUrl) {
+      hideHint();
+      if (data._poster) media.setAttribute("poster", data._poster);
+      media.src = blobUrl;
+      media.load();
+      media.addEventListener("canplay", onCanPlay, { once: true });
+      media.addEventListener("error", handleError, { once: true });
+    } else {
+      handleError();
+    }
+  }
+
+  media.addEventListener("error", onMediaError, { once: true });
+
+  media.src = src.url;
+  media.load();
+
+  const sz = qualitySize(src.label);
+  if (sz) {
+    try {
+      player.quality = sz;
+    } catch {}
+  }
 }
+
+/* ─────────────────────────────────────────────
+   ERROR HANDLER
+───────────────────────────────────────────── */
+
+function handleError() {
+  clearTimeout(retryTimer);
+  errorCount++;
+
+  if (errorCount >= sources.length) {
+    showHint("تعذّر تشغيل جميع الروابط المتاحة.");
+    errorCount = 0;
+    return;
+  }
+
+  const next = (currentIndex + 1) % sources.length;
+  showHint(
+    `فشل تحميل "${sources[currentIndex].label}" — جارٍ تجربة "${sources[next].label}"…`,
+  );
+
+  retryTimer = setTimeout(() => {
+    hideHint();
+    applySource(next, false);
+  }, 1200);
+}
+
+/* ─────────────────────────────────────────────
+   PLYR INIT
+───────────────────────────────────────────── */
+
+function buildPlyr(startIndex) {
+  const sizes = sources.map((s) => qualitySize(s.label));
+  const unique = [...new Set(sizes)].filter(Boolean).sort((a, b) => b - a);
+  const multi = sources.length > 1 && unique.length > 1;
+
+  const isIOS =
+    /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const nativeFS =
+    document.fullscreenEnabled ||
+    document.webkitFullscreenEnabled ||
+    document.mozFullScreenEnabled ||
+    document.msFullscreenEnabled;
+
+  const opts = {
+    ratio: "16:9",
+    fullscreen: {
+      enabled: true,
+      fallback: !nativeFS,
+      iosNative: isIOS,
+    },
+    keyboard: { focused: true, global: false },
+    tooltips: { controls: false, seek: true },
+    controls: [
+      "play-large",
+      "play",
+      "progress",
+      "current-time",
+      "mute",
+      "volume",
+      "settings",
+      "pip",
+      "airplay",
+      "fullscreen",
+    ],
+    settings: multi ? ["quality", "speed"] : ["speed"],
+  };
+
+  if (multi) {
+    opts.quality = {
+      default: sizes[startIndex] || unique[0],
+      options: unique,
+      forced: true,
+      onChange(q) {
+        const idx = sizes.indexOf(q);
+        if (idx >= 0 && idx !== currentIndex) {
+          errorCount = 0;
+          clearTimeout(retryTimer);
+          applySource(idx, true);
+        }
+      },
+    };
+  }
+
+  player = new Plyr(video, opts);
+  player.on("error", handleError);
+
+  applySource(startIndex, false);
+}
+
+/* ─────────────────────────────────────────────
+   LOAD DATA
+───────────────────────────────────────────── */
 
 function loadWatchData() {
   let raw;
   try {
-    raw = sessionStorage.getItem('akwamWatch');
+    raw = sessionStorage.getItem("akwamWatch");
   } catch {
     raw = null;
   }
 
-  if (!raw) {
-    Swal.fire({
-      ...SWAL_BASE,
-      icon: 'warning',
-      title: 'لا توجد بيانات',
-      text: 'افتح صفحة المشاهدة من نتائج البحث.',
-    }).then(() => {
-      window.location.href = '/';
-    });
-    return;
-  }
+  if (!raw) return (location.href = "/");
 
-  let data;
   try {
     data = JSON.parse(raw);
   } catch {
-    window.location.href = '/';
-    return;
+    return (location.href = "/");
   }
 
-  sources = (data.sources || []).filter((s) => s?.url?.startsWith('http'));
-  if (!sources.length) {
-    Swal.fire({
-      ...SWAL_BASE,
-      icon: 'error',
-      title: 'لا توجد روابط',
-      text: 'لم يتم العثور على روابط قابلة للتشغيل.',
-    }).then(() => {
-      window.location.href = '/';
-    });
-    return;
-  }
+  sources = (data.sources || []).filter((s) => s?.url?.startsWith("http"));
+  if (!sources.length) return (location.href = "/");
 
-  watchTitle.textContent = data.title || 'مشاهدة';
-  watchSubtitle.textContent = data.subtitle || '';
+  watchTitle.textContent = data.title || "مشاهدة";
+  watchSubtitle.textContent = data.subtitle || "";
 
   if (data.poster) {
-    watchPoster.src = `/akwam/proxy-image?url=${encodeURIComponent(data.poster)}`;
-    watchPoster.alt = data.title || '';
-    watchPoster.classList.remove('hidden');
-    video.setAttribute('poster', watchPoster.src);
+    const proxyUrl = `/akwam/proxy-image?url=${encodeURIComponent(data.poster)}`;
+    data._poster = proxyUrl;
+    watchPoster.src = proxyUrl;
+    watchPoster.classList.remove("hidden");
+    // Pre-set BEFORE Plyr wraps the element
+    video.setAttribute("poster", proxyUrl);
   }
 
-  qualitySelect.innerHTML = '';
-  sources.forEach((s, i) => {
-    const opt = document.createElement('option');
-    opt.value = String(i);
-    opt.textContent = s.size ? `${s.label} (${s.size})` : s.label;
-    qualitySelect.appendChild(opt);
-  });
-
-  if (sources.length <= 1) {
-    qualitySection.classList.add('hidden');
-  }
+  qualitySection.classList.add("hidden");
 
   let startIndex = 0;
   if (data.startQuality) {
@@ -175,11 +279,8 @@ function loadWatchData() {
     if (idx >= 0) startIndex = idx;
   }
 
-  setSource(startIndex);
+  buildPlyr(startIndex);
 }
 
-qualitySelect.addEventListener('change', () => {
-  setSource(Number(qualitySelect.value));
-});
-
-document.addEventListener('DOMContentLoaded', loadWatchData);
+window.addEventListener("beforeunload", revokeAllBlobs);
+document.addEventListener("DOMContentLoaded", loadWatchData);
