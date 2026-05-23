@@ -452,7 +452,7 @@ export class AkwamService {
           .attr("href")
           ?.trim();
 
-        console.log(`final link: ${finalLink}`);
+        // console.log(`final link: ${finalLink}`);
 
         if (finalLink) target[key] = finalLink;
       } catch (_) {}
