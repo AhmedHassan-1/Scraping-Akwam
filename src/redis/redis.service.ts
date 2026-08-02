@@ -1,29 +1,13 @@
 import { Injectable, OnModuleDestroy } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import Redis from "ioredis";
+import Redis, { RedisOptions } from "ioredis";
 
 @Injectable()
 export class RedisService implements OnModuleDestroy {
   readonly client: Redis;
 
   constructor(private readonly config: ConfigService) {
-    const host = this.config.get<string>("redis.host", "127.0.0.1");
-    const port = this.config.get<number>("redis.port", 6379);
-    const password = this.config.get<string>("redis.password");
-
-    this.client = new Redis({
-      host,
-      port,
-      password: password || undefined,
-
-      // مهم جدًا مع Redis Cloud
-      tls: {},
-
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false,
-      keepAlive: 30000,
-      connectTimeout: 10000,
-    });
+    this.client = new Redis(this.buildOptions());
 
     this.client.on("connect", () => {
       console.log("Redis Connected");
@@ -38,23 +22,31 @@ export class RedisService implements OnModuleDestroy {
     this.client.disconnect();
   }
 
-  getBullMqConnection() {
+  /**
+   * بناء خيارات الاتصال بـ Redis
+   * TLS يُفعَّل فقط إذا كانت هناك كلمة مرور (بيئة Production)
+   */
+  private buildOptions(): RedisOptions {
     const host = this.config.get<string>("redis.host", "127.0.0.1");
     const port = this.config.get<number>("redis.port", 6379);
     const password = this.config.get<string>("redis.password");
+
+    const isProduction = !!password; // TLS مطلوب فقط مع managed Redis (Upstash / Redis Cloud)
 
     return {
       host,
       port,
       password: password || undefined,
-
-      // مهم هنا برضو
-      tls: {},
-
+      tls: isProduction ? {} : undefined, // ✅ لا TLS مع localhost
       maxRetriesPerRequest: null,
       enableReadyCheck: false,
       keepAlive: 30000,
       connectTimeout: 10000,
     };
+  }
+
+  /** اتصال منفصل لـ BullMQ (لا يشارك نفس connection الـ client) */
+  getBullMqConnection(): RedisOptions {
+    return this.buildOptions();
   }
 }
