@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>مشاهدة — أكوام</title>
+    <title>مشاهدة — أكوام سينما</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -19,37 +19,65 @@
     />
   </head>
   <body class="watch-page">
+    <div class="ambient-glow glow-top"></div>
+    <div class="ambient-glow glow-bottom"></div>
+
     <div class="watch-app">
       <header class="watch-header">
-        <button type="button" id="backToSearchBtn" class="back-link">← العودة للنتائج</button>
+        <button type="button" id="backToSearchBtn" class="back-link">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 19 12 12 5"></polyline>
+          </svg>
+          <span>العودة للنتائج السابقة</span>
+        </button>
+
         <div class="watch-title-wrap">
-          <img id="watchPoster" class="watch-poster hidden" alt="" />
-          <div>
-            <h1 id="watchTitle">جاري التحميل...</h1>
+          <img id="watchPoster" class="watch-poster hidden" alt="بوستر العرض" />
+          <div class="watch-meta">
+            <div class="now-playing-pill">
+              <span class="pulse-dot"></span>
+              قيد التشغيل الآن
+            </div>
+            <h1 id="watchTitle">جاري تحميل الوسائط...</h1>
             <p id="watchSubtitle" class="watch-subtitle"></p>
           </div>
         </div>
       </header>
 
       <section class="watch-controls card" id="qualitySection">
-        <label for="qualitySelect">الجودة</label>
+        <div class="control-label-group">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="23 7 16 12 23 17 23 7"></polygon>
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+          </svg>
+          <label for="qualitySelect">جودة البث الحالية:</label>
+        </div>
         <select id="qualitySelect" class="quality-select"></select>
       </section>
 
-      <section class="player-wrap card">
-        <video id="player" playsinline controls crossorigin poster=""></video>
-        <p id="playerHint" class="player-hint hidden"></p>
-      </section>
+      <div class="theater-stage">
+        <div class="theater-glow"></div>
+        <section class="player-wrap card">
+          <video id="player" playsinline controls crossorigin poster=""></video>
+          <p id="playerHint" class="player-hint hidden"></p>
+        </section>
+      </div>
 
       <section class="watch-actions card">
         <a
           id="downloadBtn"
-          class="btn-primary"
+          class="btn-primary btn-download"
           href="#"
           target="_blank"
           rel="noopener"
         >
-          تحميل الرابط الحالي
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          <span>تحميل الفيديو برابط مباشر عالي السرعة</span>
         </a>
       </section>
     </div>

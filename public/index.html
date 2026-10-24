@@ -3,11 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>أكوام — بحث الأفلام والمسلسلات</title>
+    <title>أكوام — بحث ومشاهدة الأفلام والمسلسلات</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="/styles.css" />
@@ -17,39 +17,72 @@
     />
   </head>
   <body>
+    <!-- Ambient background glows -->
+    <div class="ambient-glow glow-top" aria-hidden="true"></div>
+    <div class="ambient-glow glow-bottom" aria-hidden="true"></div>
+
     <div class="app">
+      <!-- Header -->
       <header class="header">
         <div class="header-brand">
-          <span class="logo-icon" aria-hidden="true">▶</span>
-          <div>
-            <h1>أكوام</h1>
-            <p class="subtitle">ابحث، اختر، شاهد أو حمّل بجودة متعددة</p>
+          <div class="logo-icon" aria-hidden="true">
+            <span class="logo-triangle">▶</span>
           </div>
+          <div class="brand-text">
+            <div class="brand-title-row">
+              <h1>أكوام</h1>
+              <span class="version-badge">PRO v2.0</span>
+            </div>
+            <p class="subtitle">محرك البحث واستخراج روابط المشاهدة والتحميل المباشرة</p>
+          </div>
+        </div>
+
+        <div class="header-features">
+          <span class="feature-tag">
+            <span class="feature-dot"></span>
+            روابط مباشرة بدون إعلانات
+          </span>
+          <span class="feature-tag">
+            <span class="feature-dot"></span>
+            مشاهدة فورية بدقة عالية
+          </span>
+          <span class="feature-tag">
+            <span class="feature-dot"></span>
+            تحميل Downet فائق السرعة
+          </span>
         </div>
       </header>
 
-      <section class="search-panel card">
+      <!-- Search Panel -->
+      <section class="search-panel card glass-panel">
         <form id="searchForm" class="search-form">
           <div class="search-input-wrap">
-            <span class="search-icon" aria-hidden="true">⌕</span>
+            <span class="search-icon" aria-hidden="true">🔍</span>
             <input
               type="text"
               id="searchInput"
-              placeholder="اكتب اسم الفيلم أو المسلسل..."
+              placeholder="ابحث عن فيلم أو مسلسل (مثال: Inception, Arrow, Batman)..."
               autocomplete="off"
               required
             />
           </div>
-          <button type="submit" id="searchBtn" class="btn-search">بحث</button>
+          <button type="submit" id="searchBtn" class="btn-search">
+            <span>بحث</span>
+            <span class="btn-arrow" aria-hidden="true">←</span>
+          </button>
           <button type="button" id="cancelBtn" class="btn-danger hidden">
-            إلغاء
+            <span>إلغاء</span>
           </button>
         </form>
       </section>
 
-      <section id="progressSection" class="card hidden">
+      <!-- Progress / Pipeline Section -->
+      <section id="progressSection" class="card glass-panel hidden">
         <div class="progress-header">
-          <span id="statusBadge" class="badge">جاري البحث</span>
+          <div class="status-wrap">
+            <span class="status-pulse-dot" aria-hidden="true"></span>
+            <span id="statusBadge" class="badge">جاري البحث</span>
+          </div>
           <span id="progressText" class="progress-text"></span>
         </div>
         <div class="progress-bar-track">
@@ -58,37 +91,45 @@
         <p id="progressMessage" class="progress-message"></p>
       </section>
 
-      <section id="selectionSection" class="card hidden">
-        <div class="section-head">
-          <h2>اختر النتائج المطلوبة</h2>
-          <p class="hint">تم العثور على عدة نتائج — حدد ما تريد معالجته</p>
-        </div>
-        <div class="selection-actions">
-          <button type="button" id="selectAllBtn" class="btn-secondary">
-            تحديد الكل
-          </button>
-          <button type="button" id="clearAllBtn" class="btn-secondary">
-            إلغاء التحديد
-          </button>
+      <!-- Candidates Selection Section -->
+      <section id="selectionSection" class="card glass-panel hidden">
+        <div class="section-head-row">
+          <div class="section-head">
+            <h2>الأعمال المكتشفة</h2>
+            <p class="hint">حدد الأعمال التي تريد معالجتها واستخراج روابطها</p>
+          </div>
+          <div class="selection-actions">
+            <button type="button" id="selectAllBtn" class="btn-secondary">
+              تحديد الكل
+            </button>
+            <button type="button" id="clearAllBtn" class="btn-secondary">
+              إلغاء التحديد
+            </button>
+          </div>
         </div>
         <div id="candidatesList" class="candidates-list"></div>
         <button type="button" id="startProcessBtn" class="btn-primary">
-          بدء المعالجة
+          <span>بدء استخراج الروابط المختارة</span>
+          <span class="btn-arrow" aria-hidden="true">⚡</span>
         </button>
       </section>
 
+      <!-- Results Section -->
       <section id="resultsSection" class="hidden">
-        <div class="section-head">
-          <h2 class="results-title">النتائج</h2>
+        <div class="section-head-row">
+          <div class="section-head">
+            <h2 class="results-title">النتائج والروابط المباشرة</h2>
+          </div>
         </div>
         <div id="resultsContainer" class="results-grid"></div>
       </section>
     </div>
 
+    <!-- Footer -->
     <footer class="site-footer">
-      <p class="footer-made">Made by <strong>Ahmed Hassan</strong></p>
+      <p class="footer-made">تم التطوير بواسطة <strong>Ahmed Hassan</strong></p>
       <nav class="footer-links" aria-label="تواصل مع المطور">
-        <a href="tel:+201142041272" class="footer-link">01142041272</a>
+        <a href="tel:+201142041272" class="footer-link">📞 01142041272</a>
         <a
           href="https://www.facebook.com/Ahmed.Hassan219"
           class="footer-link"
