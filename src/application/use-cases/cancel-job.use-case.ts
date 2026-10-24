@@ -16,18 +16,20 @@ export class CancelJobUseCase {
       throw new JobNotFoundException(id);
     }
 
-    if (['completed', 'cancelled', 'failed'].includes(job.status)) {
-      return job;
-    }
-
     job.status = 'cancelled';
     job.queuePosition = 0;
     job.progress.message = 'تم إلغاء المهمة';
     job.updatedAt = Date.now();
 
     await this.jobRepository.save(job);
-    await this.jobRepository.publishEvent(id, { type: 'cancelled', data: { status: job.status } });
-    await this.jobRepository.publishEvent(id, { type: 'status', data: { status: job.status } });
+    await this.jobRepository.publishEvent(id, {
+      type: 'cancelled',
+      data: { status: job.status },
+    });
+    await this.jobRepository.publishEvent(id, {
+      type: 'status',
+      data: { status: job.status },
+    });
 
     return job;
   }

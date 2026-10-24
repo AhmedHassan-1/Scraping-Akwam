@@ -26,6 +26,7 @@ import {
 import { Request } from 'express';
 import { Observable, map } from 'rxjs';
 import { UserRateLimitGuard } from '../../queue/user-rate-limit.guard';
+import { RateLimit } from '../../queue/rate-limit.decorator';
 import { CreateJobDto } from '../../application/dtos/create-job.dto';
 import { StartJobDto } from '../../application/dtos/start-job.dto';
 import { JobSnapshotDto } from '../../application/dtos/job-response.dto';
@@ -35,6 +36,7 @@ import { GetJobSnapshotUseCase } from '../../application/use-cases/get-job-snaps
 import { StartProcessingUseCase } from '../../application/use-cases/start-processing.use-case';
 import { CancelJobUseCase } from '../../application/use-cases/cancel-job.use-case';
 import { IJobRepository } from '../../core/interfaces/job-repository.interface';
+import { IQueueProvider } from '../../core/interfaces/queue-provider.interface';
 
 @ApiTags('jobs')
 @Controller('akwam/jobs')
@@ -46,6 +48,8 @@ export class AkwamJobsController {
     private readonly cancelJobUseCase: CancelJobUseCase,
     @Inject('IJobRepository')
     private readonly jobRepository: IJobRepository,
+    @Inject('IQueueProvider')
+    private readonly queueProvider: IQueueProvider,
   ) {}
 
   @ApiOperation({
@@ -72,10 +76,23 @@ export class AkwamJobsController {
   })
   @Post()
   @UseGuards(UserRateLimitGuard)
+  @RateLimit({ scope: 'jobs' })
   async createJob(@Body() dto: CreateJobDto, @Req() req: Request) {
     return this.createJobUseCase.execute(dto.search, {
       bypass: !!req.queueBypass,
     });
+  }
+
+  @ApiOperation({
+    summary: 'إحصائيات وحالة طابور المعالجة (Queue Metrics)',
+    description: 'يسترجع الأعداد الحالية للمهام في طابور BullMQ (waiting, active, completed, failed, delayed).',
+  })
+  @ApiOkResponse({
+    description: 'إحصائيات الطابور الشاملة',
+  })
+  @Get('queue/status')
+  async getQueueMetrics() {
+    return this.queueProvider.getQueueMetrics();
   }
 
   @ApiOperation({
@@ -113,39 +130,43 @@ export class AkwamJobsController {
       '- `queue`: تحديث الترتيب والموقع في طابور الانتظار\n' +
       '- `status`: تغير حالة المهمة (`discovering`, `awaiting_selection`, `processing`, ...)\n' +
       '- `progress`: رسائل التقدم ونسبة الإنجاز\n' +
-      '- `candidates`: إرسال قائمة الأعمال المكتشفة بعد انتهاء البحث\n' +
-      '- `item`: اكتمال معالجة فيلم أو حلقة بشكل جزئي مع الروابط\n' +
-      '- `complete`: اكتمال جميع الروابط المطلوبة بنجاح\n' +
-      '- `error`: في حال حدوث خطأ أثناء المعالجة\n' +
-      '- `cancelled`: عند إلغاء المهمة من قبل المستخدم',
+      '- `candidates`: قائمة الأعمال المكتشفة وجاهزية الاختيار\n' +
+      '- `item`: اكتمال معالجة عمل معين\n' +
+      '- `complete`: اكتمال كامل المهمة واستخراج كافة الروابط\n' +
+      '- `cancelled`: إلغاء المهمة\n' +
+      '- `error`: حدوث خطأ أثناء المعالجة\n\n' +
+      'يُغلق التدفق تلقائياً بمجرد وصول المهمة إلى حالة نهائية (`completed`, `cancelled`, `failed`).',
   })
   @ApiParam({
     name: 'id',
-    description: 'معرف المهمة (UUID v4)',
+    description: 'المعرف الفريد للمهمة (UUID v4)',
     example: '7c3ad391-0442-4118-ad7b-0d3dfe8851c5',
   })
-  @ApiResponse({
-    status: 200,
-    description: 'تدفق Server-Sent Events بصيغة `text/event-stream` مع `data: <JSON>\\n\\n`',
+  @ApiOkResponse({
+    description: 'تدفق Server-Sent Events بصيغة text/event-stream',
+    headers: {
+      'Content-Type': {
+        schema: { type: 'string', example: 'text/event-stream' },
+      },
+    },
   })
   @ApiNotFoundResponse({
     description: 'المهمة غير موجودة',
     type: ErrorResponseDto,
   })
   @Sse(':id/events')
-  jobEvents(@Param('id', new ParseUUIDPipe()) id: string): Observable<MessageEvent> {
+  streamJobEvents(
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Observable<MessageEvent> {
     return this.jobRepository.subscribeEvents(id).pipe(
-      map(
-        (event) =>
-          ({
-            data: JSON.stringify(event),
-          }) as MessageEvent,
-      ),
+      map((event) => ({
+        data: event,
+      } as unknown as MessageEvent)),
     );
   }
 
   @ApiOperation({
-    summary: 'بدء معالجة العناصر المختارة (Start Processing Selected Items)',
+    summary: 'بدء معالجة واستخراج روابط العناصر المختارة (Start Processing)',
     description:
       'ينقل المهمة من حالة انتظار الاختيار `awaiting_selection` إلى طابور المعالجة `queued` ➔ `processing` لجلب روابط التحميل المباشرة والجودات لكل عنصر تم اختياره.',
   })
@@ -169,6 +190,7 @@ export class AkwamJobsController {
   })
   @Post(':id/start')
   @UseGuards(UserRateLimitGuard)
+  @RateLimit({ scope: 'jobs' })
   async startJob(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: StartJobDto,

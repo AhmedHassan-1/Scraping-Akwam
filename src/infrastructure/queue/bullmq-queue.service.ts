@@ -2,7 +2,11 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import { Job, Queue, Worker } from 'bullmq';
 import { RedisService } from '../../redis/redis.service';
-import { IQueueProvider, QueueStatusResult } from '../../core/interfaces/queue-provider.interface';
+import {
+  IQueueProvider,
+  QueueStatusResult,
+  QueueMetricsResult,
+} from '../../core/interfaces/queue-provider.interface';
 
 export type AkwamJobType = 'discover' | 'process';
 
@@ -51,9 +55,8 @@ export class BullMqQueueService implements IQueueProvider, OnModuleInit, OnModul
       'discover',
       { type: 'discover', jobId },
       {
-        jobId: `discover-${jobId}`,
         priority: bullPriority,
-        removeOnComplete: true,
+        removeOnComplete: 100,
         removeOnFail: 50,
       },
     );
@@ -64,9 +67,8 @@ export class BullMqQueueService implements IQueueProvider, OnModuleInit, OnModul
       'process',
       { type: 'process', jobId, selectedIds },
       {
-        jobId: `process-${jobId}-${Date.now()}`,
         priority: bullPriority,
-        removeOnComplete: true,
+        removeOnComplete: 100,
         removeOnFail: 50,
       },
     );
@@ -108,6 +110,24 @@ export class BullMqQueueService implements IQueueProvider, OnModuleInit, OnModul
       waitingTotal: ordered.length,
       ahead: index,
       isActive: false,
+    };
+  }
+
+  async getQueueMetrics(): Promise<QueueMetricsResult> {
+    const counts = await this.queue.getJobCounts(
+      'waiting',
+      'active',
+      'completed',
+      'failed',
+      'delayed',
+      'prioritized',
+    );
+    return {
+      waiting: (counts.waiting || 0) + (counts.prioritized || 0),
+      active: counts.active || 0,
+      completed: counts.completed || 0,
+      failed: counts.failed || 0,
+      delayed: counts.delayed || 0,
     };
   }
 }
