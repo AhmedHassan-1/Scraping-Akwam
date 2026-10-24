@@ -7,6 +7,7 @@ dist/
 # Environment — NEVER commit real secrets
 .env
 .env*
+!.env.example
 .env.local
 .env.*.local
 
@@ -23,3 +24,7 @@ npm-debug.log*
 
 # TypeScript incremental build info
 *.tsbuildinfo
+
+# Archives
+*.zip
+*.tar.gz

@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { RedisService } from '../redis/redis.service';
+import { IRateLimiter } from '../../core/interfaces/rate-limiter.interface';
+import { RedisService } from '../../redis/redis.service';
 
 @Injectable()
-export class ScrapeRateLimiterService {
+export class TokenBucketRateLimiterService implements IRateLimiter {
   private readonly maxPerSecond: number;
 
   constructor(
@@ -14,14 +15,13 @@ export class ScrapeRateLimiterService {
     this.maxPerSecond = Math.max(0.1, rate);
   }
 
-  /** Blocks until a scrape slot is available (global, Redis-backed). */
   async acquire(): Promise<void> {
     const minIntervalMs = Math.ceil(1000 / this.maxPerSecond);
 
     while (true) {
       const allowed = await this.tryTakeSlot();
       if (allowed) return;
-      await sleep(minIntervalMs);
+      await new Promise((resolve) => setTimeout(resolve, minIntervalMs));
     }
   }
 
@@ -34,8 +34,4 @@ export class ScrapeRateLimiterService {
     }
     return count <= Math.ceil(this.maxPerSecond);
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }

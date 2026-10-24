@@ -6,7 +6,7 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Request } from 'express';
+import { Request, Response } from 'express';
 import { RedisService } from '../redis/redis.service';
 
 @Injectable()
@@ -23,22 +23,36 @@ export class UserRateLimitGuard implements CanActivate {
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const req = context.switchToHttp().getRequest<Request>();
+    const http = context.switchToHttp();
+    const req = http.getRequest<Request>();
+    const res = http.getResponse<Response>();
+
+    // Skip rate limiting if admin bypass cookie was verified
     if (req.queueBypass) return true;
 
     const userKey = this.resolveUserKey(req);
     const redisKey = `ratelimit:user:${userKey}`;
     const count = await this.redis.client.incr(redisKey);
+
     if (count === 1) {
       await this.redis.client.expire(redisKey, this.windowSec);
     }
 
+    const ttl = await this.redis.client.ttl(redisKey);
+    const resetTime = ttl > 0 ? ttl : this.windowSec;
+
+    // Set standard RateLimit headers
+    res.setHeader('X-RateLimit-Limit', this.limit);
+    res.setHeader('X-RateLimit-Remaining', Math.max(0, this.limit - count));
+    res.setHeader('X-RateLimit-Reset', resetTime);
+
     if (count > this.limit) {
-      const ttl = await this.redis.client.ttl(redisKey);
+      res.setHeader('Retry-After', resetTime);
       throw new HttpException(
         {
           statusCode: HttpStatus.TOO_MANY_REQUESTS,
-          message: `تجاوزت الحد المسموح (${this.limit} طلب كل ${this.windowSec} ثانية). حاول بعد ${ttl > 0 ? ttl : this.windowSec} ثانية.`,
+          error: 'Too Many Requests',
+          message: `تجاوزت الحد الأقصى للطلبات (${this.limit} طلب كل ${this.windowSec} ثانية). يرجى الانتظار لمدة ${resetTime} ثانية قبل إعادة المحاولة.`,
         },
         HttpStatus.TOO_MANY_REQUESTS,
       );
@@ -48,10 +62,10 @@ export class UserRateLimitGuard implements CanActivate {
   }
 
   private resolveUserKey(req: Request): string {
-    const forwarded = req.headers['x-forwarded-for'];
-    if (typeof forwarded === 'string' && forwarded.length) {
-      return forwarded.split(',')[0].trim();
-    }
-    return req.ip || req.socket.remoteAddress || 'unknown';
+    const rawIp = req.ip || req.socket.remoteAddress || 'unknown';
+    // Normalize IPv6 mapped IPv4 and loopback
+    let normalized = rawIp.replace(/^::ffff:/, '');
+    if (normalized === '::1') normalized = '127.0.0.1';
+    return normalized;
   }
 }
