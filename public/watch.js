@@ -291,3 +291,18 @@ function loadWatchData() {
 window.addEventListener("beforeunload", revokeAllBlobs);
 document.addEventListener("DOMContentLoaded", loadWatchData);
 // TEST
+
+
+document.addEventListener("DOMContentLoaded", () => {
+  const backBtn = document.getElementById("backToSearchBtn");
+  if (backBtn) {
+    backBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      if (window.history.length > 1) {
+        window.history.back();
+      } else {
+        window.location.href = "/";
+      }
+    });
+  }
+});

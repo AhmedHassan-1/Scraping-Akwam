@@ -306,3 +306,24 @@
     height: 80px;
   }
 }
+
+
+/* ─── Button back link ──────────────── */
+button.back-link {
+  background: none;
+  border: none;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  margin-bottom: 1rem;
+  transition: color 0.15s;
+}
+
+button.back-link:hover {
+  color: var(--accent);
+}

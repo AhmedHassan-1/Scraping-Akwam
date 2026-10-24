@@ -72,47 +72,53 @@ export class MediaDetailsParser {
       return { isSeries: true, series, episodeUrls };
     }
 
-    // Movie parsing
-    const containers = $('.page-movie.page-film .container');
-    let filmWidget: cheerio.Cheerio<any>;
+    // Movie parsing: dynamically locate the widget with download links
+    const filmWidget = $('.widget')
+      .filter((_, el) => $(el).find('a[href*="/download/"]').length > 0)
+      .first();
 
-    try {
-      filmWidget = containers
-        .eq(1)
-        .find('.widget.widget-style-1.mb-5')
-        .eq(2)
-        .find('.widget-body');
-      if (!filmWidget.find('.bg-primary2.p-4').length) throw new Error();
-    } catch (_) {
-      filmWidget = containers
-        .eq(1)
-        .find('.widget.widget-style-1.mb-5')
-        .eq(3)
-        .find('.widget-body');
-    }
-
-    const qualityTabs = filmWidget.find('.header-tabs-container .header-tabs li');
-    const qualityContents = filmWidget.find('.bg-primary2.p-4 .tab-content.quality');
+    const qualityTabs = filmWidget.find('.header-tabs-container .header-tabs li, .header-tabs li');
+    const qualityContents = filmWidget.find('.tab-content.quality, .tab-content');
 
     const qualities: DownloadQuality[] = [];
 
-    qualityContents.each((i, qc) => {
-      const qualityName = $(qualityTabs.eq(i)).find('a').text().trim();
-      const linkDiv = $(qc)
-        .find('.qualities.row.flex-wrap.align-items-center .col-lg-6.row')
-        .children()
-        .eq(1);
-      const downloadLink = linkDiv.find('a').attr('href');
-      const size = linkDiv.find('a span').eq(1).text().trim();
+    if (qualityContents.length > 0) {
+      qualityContents.each((i, qc) => {
+        const tabEl = qualityTabs.eq(i);
+        const qualityName =
+          tabEl.find('a').text().trim() ||
+          tabEl.text().trim() ||
+          `Quality ${i + 1}`;
+        const downloadLink = $(qc).find('a[href*="/download/"]').attr('href')?.trim();
+        const watchLink = $(qc).find('a[href*="/watch/"]').attr('href')?.trim();
+        const size = $(qc)
+          .find('a[href*="/download/"]')
+          .text()
+          .replace(/تحميل/g, '')
+          .trim();
 
-      if (downloadLink) {
-        qualities.push({
-          quality: qualityName,
-          downloadUrl: downloadLink,
-          size,
-        });
-      }
-    });
+        if (downloadLink) {
+          qualities.push({
+            quality: qualityName,
+            downloadUrl: downloadLink,
+            watchUrl: watchLink,
+            size,
+          });
+        }
+      });
+    } else {
+      filmWidget.find('a[href*="/download/"]').each((i, el) => {
+        const dlLink = $(el).attr('href')?.trim();
+        const size = $(el).text().replace(/تحميل/g, '').trim();
+        if (dlLink) {
+          qualities.push({
+            quality: `Quality ${i + 1}`,
+            downloadUrl: dlLink,
+            size,
+          });
+        }
+      });
+    }
 
     const movie: Movie = {
       title,

@@ -165,6 +165,12 @@ async function startSearch() {
   const query = searchInput.value.trim();
   if (!query) return;
 
+  // Clear previous session storage for results
+  try {
+    sessionStorage.removeItem('akwam_last_results');
+    sessionStorage.setItem('akwam_last_query', query);
+  } catch (_) {}
+
   cleanupJob();
   setBusy(true);
   resultsSection.classList.add('hidden');
@@ -189,6 +195,9 @@ async function startSearch() {
     }
     const job = await res.json();
     currentJobId = job.id;
+    try {
+      sessionStorage.setItem('akwam_last_job_id', job.id);
+    } catch (_) {}
     applyQueueFromSnap(job);
     connectEvents(job.id);
   } catch (err) {
@@ -477,6 +486,10 @@ async function startSelectedProcessing() {
 }
 
 function resetSearchUI() {
+  try {
+    sessionStorage.removeItem('akwam_last_results');
+    sessionStorage.removeItem('akwam_last_job_id');
+  } catch (_) {}
   progressSection.classList.add('hidden');
   selectionSection.classList.add('hidden');
   resultsSection.classList.add('hidden');
@@ -549,6 +562,17 @@ function renderResults(data) {
     return;
   }
 
+  // Persist results and search query in sessionStorage for instant restoration on Back navigation
+  try {
+    sessionStorage.setItem('akwam_last_results', JSON.stringify(data));
+    if (searchInput.value.trim()) {
+      sessionStorage.setItem('akwam_last_query', searchInput.value.trim());
+    }
+    if (currentJobId) {
+      sessionStorage.setItem('akwam_last_job_id', currentJobId);
+    }
+  } catch (_) {}
+
   resultsContainer.innerHTML = '';
 
   for (const group of data) {
@@ -585,6 +609,8 @@ function extractQualities(obj) {
 
 function openWatchPage(payload) {
   try {
+    // Preserve current scroll position before navigating
+    sessionStorage.setItem('akwam_scroll_pos', window.scrollY.toString());
     sessionStorage.setItem('akwamWatch', JSON.stringify(payload));
     window.location.href = '/watch.html';
   } catch {
@@ -656,14 +682,63 @@ function renderItemCard(item, isSeries) {
   if (isSeries) {
     const epKey = item.Title;
     const episodes = item[epKey];
-    if (Array.isArray(episodes)) {
-      const epSection = document.createElement('div');
-      epSection.className = 'episodes';
-      epSection.innerHTML = '<h4>الحلقات</h4>';
-      for (const ep of episodes) {
-        epSection.appendChild(renderEpisode(ep, item.Image, item.Title));
-      }
-      content.appendChild(epSection);
+    if (Array.isArray(episodes) && episodes.length > 0) {
+      const epContainer = document.createElement('div');
+      epContainer.className = 'episodes-container';
+
+      // Header row with count and Expand/Collapse All buttons
+      const headerRow = document.createElement('div');
+      headerRow.className = 'episodes-header-row';
+      headerRow.innerHTML = `
+        <h4>📺 قائمة الحلقات (${episodes.length} حلقة)</h4>
+        <div class="episodes-actions">
+          <button type="button" class="btn-toggle-all" data-action="expand-all">توسيع الكل</button>
+          <button type="button" class="btn-toggle-all" data-action="collapse-all">طي الكل</button>
+        </div>
+      `;
+      epContainer.appendChild(headerRow);
+
+      const accordionList = document.createElement('div');
+      accordionList.className = 'episodes-accordion-list';
+
+      episodes.forEach((ep, idx) => {
+        accordionList.appendChild(
+          renderEpisodeAccordion(ep, item.Image, item.Title, idx),
+        );
+      });
+
+      epContainer.appendChild(accordionList);
+
+      // Expand / Collapse listeners
+      headerRow
+        .querySelector('[data-action="expand-all"]')
+        .addEventListener('click', () => {
+          accordionList
+            .querySelectorAll('.episode-accordion-item')
+            .forEach((el) => {
+              el.classList.add('is-open');
+              el.querySelector('.episode-header-btn')?.setAttribute(
+                'aria-expanded',
+                'true',
+              );
+            });
+        });
+
+      headerRow
+        .querySelector('[data-action="collapse-all"]')
+        .addEventListener('click', () => {
+          accordionList
+            .querySelectorAll('.episode-accordion-item')
+            .forEach((el) => {
+              el.classList.remove('is-open');
+              el.querySelector('.episode-header-btn')?.setAttribute(
+                'aria-expanded',
+                'false',
+              );
+            });
+        });
+
+      content.appendChild(epContainer);
     }
   } else {
     content.appendChild(
@@ -674,15 +749,46 @@ function renderItemCard(item, isSeries) {
   return card;
 }
 
-function renderEpisode(ep, seriesPoster, seriesTitle) {
-  const block = document.createElement('div');
-  block.className = 'episode-block';
+/**
+ * Renders each episode as a closed accordion item by default.
+ * Clicking the header toggles it open/closed.
+ */
+function renderEpisodeAccordion(ep, seriesPoster, seriesTitle, index) {
+  const item = document.createElement('div');
+  item.className = 'episode-accordion-item';
   const qualities = extractQualities(ep);
-  block.innerHTML = `<h5>${escapeHtml(ep.Title || '')}</h5>`;
-  block.appendChild(
-    renderQualitiesList(qualities, `${seriesTitle} — ${ep.Title}`, seriesPoster),
+  const qCount = qualities.length;
+  const qBadgeText = qCount > 0 ? `${qCount} جودات متاحة` : 'جاري التجهيز';
+
+  const epTitle = ep.Title || `الحلقة ${index + 1}`;
+
+  item.innerHTML = `
+    <button type="button" class="episode-header-btn" aria-expanded="false">
+      <div class="episode-header-right">
+        <span class="episode-icon">🎬</span>
+        <span class="episode-title-text">${escapeHtml(epTitle)}</span>
+      </div>
+      <div class="episode-header-left">
+        <span class="episode-badge-qualities">${escapeHtml(qBadgeText)}</span>
+        <span class="episode-toggle-icon">▼</span>
+      </div>
+    </button>
+    <div class="episode-body"></div>
+  `;
+
+  const headerBtn = item.querySelector('.episode-header-btn');
+  const body = item.querySelector('.episode-body');
+
+  body.appendChild(
+    renderQualitiesList(qualities, `${seriesTitle} — ${epTitle}`, seriesPoster),
   );
-  return block;
+
+  headerBtn.addEventListener('click', () => {
+    const isOpen = item.classList.toggle('is-open');
+    headerBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  });
+
+  return item;
 }
 
 function renderQualitiesList(qualities, title, poster) {
@@ -708,7 +814,7 @@ function renderQualitiesList(qualities, title, poster) {
       </div>
       <div class="quality-actions">
         <button type="button" class="btn-watch" data-action="watch">▶ مشاهدة</button>
-        <a class="quality-download" href="${escapeAttr(q.url)}" target="_blank" rel="noopener noreferrer">تحميل</a>
+        <a class="quality-download" href="${escapeAttr(q.url)}" target="_blank" rel="noopener noreferrer" download>تحميل</a>
       </div>
     `;
     row.querySelector('[data-action="watch"]').addEventListener('click', () => {
@@ -758,4 +864,46 @@ function escapeHtml(str) {
 
 function escapeAttr(str) {
   return escapeHtml(str).replace(/'/g, '&#39;');
+}
+
+/**
+ * Restores previous search state and results on page reload or back navigation.
+ */
+function restoreSearchState() {
+  try {
+    const savedResults = sessionStorage.getItem('akwam_last_results');
+    const savedQuery = sessionStorage.getItem('akwam_last_query');
+    const savedJobId = sessionStorage.getItem('akwam_last_job_id');
+    const scrollPos = sessionStorage.getItem('akwam_scroll_pos');
+
+    if (savedQuery) {
+      searchInput.value = savedQuery;
+    }
+
+    if (savedResults) {
+      const parsed = JSON.parse(savedResults);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        resultsSection.classList.remove('hidden');
+        renderResults(parsed);
+        if (savedJobId) currentJobId = savedJobId;
+
+        // Restore scroll position smoothly
+        if (scrollPos) {
+          setTimeout(() => {
+            window.scrollTo({ top: Number(scrollPos), behavior: 'smooth' });
+            sessionStorage.removeItem('akwam_scroll_pos');
+          }, 150);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Failed to restore search state:', err);
+  }
+}
+
+// Restore state when page loads (e.g. returning from watch.html)
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', restoreSearchState);
+} else {
+  restoreSearchState();
 }

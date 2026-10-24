@@ -11,9 +11,7 @@ export class AkwamDownloadResolverService {
 
   /**
    * Resolves download qualities sequentially to respect global rate limits.
-   * Step 1: Listing page -> parse download page URL
-   * Step 2: Download page -> parse redirect page URL
-   * Step 3: Redirect page -> parse direct download URL
+   * Directly extracts the real downloadable MP4/MKV URL from the Downet/Akwam redirect page.
    */
   async resolveQualitiesSequential(
     qualities: DownloadQuality[],
@@ -49,18 +47,32 @@ export class AkwamDownloadResolverService {
     downloadUrl: string,
     signal?: AbortSignal,
   ): Promise<string | null> {
-    // Step 1: Open download listing page
+    // If it is already a direct media server link, return immediately
+    if (
+      downloadUrl.includes('downet.net/download/') ||
+      downloadUrl.endsWith('.mp4') ||
+      downloadUrl.endsWith('.mkv')
+    ) {
+      return downloadUrl;
+    }
+
+    // Step 1: Open the Akwam download/redirect page
     const dlPageRes = await this.httpClient.get(downloadUrl, { signal });
-    const downloadPageUrl = DownloadLinksParser.parseRedirectUrlFromDownloadPage(
-      Buffer.from(dlPageRes.data),
-    );
+    const buffer = Buffer.from(dlPageRes.data);
 
-    if (!downloadPageUrl) return null;
+    // Primary: directly parse the final direct link (e.g. .btn-loader a.link.btn.btn-light)
+    const directUrl = DownloadLinksParser.parseFinalDirectUrlFromRedirectPage(buffer);
+    if (directUrl) return directUrl;
 
-    // Step 2: Open download page to get redirect page
-    const redirectPageRes = await this.httpClient.get(downloadPageUrl, { signal });
-    return DownloadLinksParser.parseFinalDirectUrlFromRedirectPage(
-      Buffer.from(redirectPageRes.data),
-    );
+    // Fallback: If it was an older intermediate page, follow the redirect link
+    const intermediateUrl = DownloadLinksParser.parseRedirectUrlFromDownloadPage(buffer);
+    if (intermediateUrl && intermediateUrl !== downloadUrl) {
+      const redirectPageRes = await this.httpClient.get(intermediateUrl, { signal });
+      return DownloadLinksParser.parseFinalDirectUrlFromRedirectPage(
+        Buffer.from(redirectPageRes.data),
+      );
+    }
+
+    return null;
   }
 }
