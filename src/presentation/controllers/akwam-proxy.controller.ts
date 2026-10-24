@@ -17,6 +17,7 @@ import {
 } from '@nestjs/swagger';
 import { Response } from 'express';
 import { UserRateLimitGuard } from '../../queue/user-rate-limit.guard';
+import { RateLimit } from '../../queue/rate-limit.decorator';
 import { ProxyImageDto } from '../../application/dtos/proxy-image.dto';
 import { ErrorResponseDto } from '../../application/dtos/error-response.dto';
 import { ProxyImageUseCase } from '../../application/use-cases/proxy-image.use-case';
@@ -35,7 +36,8 @@ export class AkwamProxyController {
       '- 🛑 **Anti-Redirect:** إيقاف تتبع الـ Redirects لمنع استهداف الشبكات الداخلية أو Cloud Metadata (`169.254.169.254`).\n' +
       '- 📏 **Size Limit:** حد أقصى لحجم الصورة 5 ميجابايت.\n' +
       '- ⚡ **Redis Cache:** تخزين الصورة في Upstash Redis لمدة 24 ساعة لتقليل الضغط وسرعة الاستجابة.\n' +
-      '- 📦 **Browser Cache-Control:** ترويسة كاش للمتصفح لمدة يوم كامل (`max-age=86400`).',
+      '- 📦 **Browser Cache-Control:** ترويسة كاش للمتصفح لمدة يوم كامل (`max-age=86400`).\n' +
+      '- 🚦 **Dedicated Image Rate Limiting:** محدد سرعة منفصل للصور بمعدل 150 صورة/دقيقة لا يؤثر على مهام البحث.',
   })
   @ApiQuery({
     name: 'url',
@@ -60,11 +62,12 @@ export class AkwamProxyController {
     type: ErrorResponseDto,
   })
   @ApiTooManyRequestsResponse({
-    description: 'تجاوز حد الطلبات المسموح به لكل عنوان IP',
+    description: 'تجاوز حد جلب الصور المسموح به لكل عنوان IP (150 صورة/دقيقة)',
     type: ErrorResponseDto,
   })
   @Get('proxy-image')
   @UseGuards(UserRateLimitGuard)
+  @RateLimit({ scope: 'images' })
   async proxyImage(@Query() dto: ProxyImageDto, @Res() res: Response) {
     const { buffer, contentType } = await this.proxyImageUseCase.execute(dto.url);
     res.set({

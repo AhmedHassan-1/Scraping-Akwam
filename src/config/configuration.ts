@@ -52,7 +52,22 @@ export default () => {
       bypassCookieValue: process.env.QUEUE_BYPASS_COOKIE_VALUE || '',
     },
     rateLimit: {
-      perUser: parseInt(process.env.RATE_LIMIT_PER_USER || '10', 10),
+      perUser: parseInt(
+        process.env.RATE_LIMIT_JOBS_PER_USER ||
+          process.env.RATE_LIMIT_PER_USER ||
+          '30',
+        10,
+      ),
+      jobsPerUser: parseInt(
+        process.env.RATE_LIMIT_JOBS_PER_USER ||
+          process.env.RATE_LIMIT_PER_USER ||
+          '30',
+        10,
+      ),
+      imagesPerUser: parseInt(
+        process.env.RATE_LIMIT_IMAGES_PER_USER || '150',
+        10,
+      ),
       windowSec: parseInt(process.env.RATE_LIMIT_WINDOW_SEC || '60', 10),
     },
   };
