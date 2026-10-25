@@ -65,10 +65,15 @@
               autocomplete="off"
               required
             />
+            <button type="button" id="clearInputBtn" class="btn-clear-input hidden" title="مسح النص" aria-label="مسح النص">✕</button>
           </div>
           <button type="submit" id="searchBtn" class="btn-search">
             <span>بحث</span>
             <span class="btn-arrow" aria-hidden="true">←</span>
+          </button>
+          <button type="button" id="resetBtn" class="btn-reset hidden" title="مسح نتائج البحث وإعادة ضبط الصفحة">
+            <span class="reset-icon" aria-hidden="true">↺</span>
+            <span>إعادة ضبط</span>
           </button>
           <button type="button" id="cancelBtn" class="btn-danger hidden">
             <span>إلغاء</span>
@@ -119,6 +124,12 @@
         <div class="section-head-row">
           <div class="section-head">
             <h2 class="results-title">النتائج والروابط المباشرة</h2>
+          </div>
+          <div class="results-actions">
+            <button type="button" id="resetResultsBtn" class="btn-reset-results" title="مسح النتائج وبدء بحث جديد">
+              <span class="reset-icon" aria-hidden="true">↺</span>
+              <span>مسح وبدء بحث جديد</span>
+            </button>
           </div>
         </div>
         <div id="resultsContainer" class="results-grid"></div>

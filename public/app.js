@@ -4,6 +4,9 @@ const searchForm = $('#searchForm');
 const searchInput = $('#searchInput');
 const searchBtn = $('#searchBtn');
 const cancelBtn = $('#cancelBtn');
+const resetBtn = $('#resetBtn');
+const resetResultsBtn = $('#resetResultsBtn');
+const clearInputBtn = $('#clearInputBtn');
 const progressSection = $('#progressSection');
 const selectionSection = $('#selectionSection');
 const resultsSection = $('#resultsSection');
@@ -114,6 +117,24 @@ searchForm.addEventListener('submit', (e) => {
 });
 
 cancelBtn.addEventListener('click', cancelSearch);
+if (resetBtn) resetBtn.addEventListener('click', handleResetRequest);
+if (resetResultsBtn) resetResultsBtn.addEventListener('click', handleResetRequest);
+if (clearInputBtn) {
+  clearInputBtn.addEventListener('click', () => {
+    searchInput.value = '';
+    searchInput.focus();
+    updateResetButtonVisibility();
+  });
+}
+searchInput.addEventListener('input', () => {
+  updateResetButtonVisibility();
+});
+searchInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    searchInput.value = '';
+    updateResetButtonVisibility();
+  }
+});
 startProcessBtn.addEventListener('click', startSelectedProcessing);
 selectAllBtn.addEventListener('click', () => toggleAllCandidates(true));
 clearAllBtn.addEventListener('click', () => toggleAllCandidates(false));
@@ -488,7 +509,9 @@ async function startSelectedProcessing() {
 function resetSearchUI() {
   try {
     sessionStorage.removeItem('akwam_last_results');
+    sessionStorage.removeItem('akwam_last_query');
     sessionStorage.removeItem('akwam_last_job_id');
+    sessionStorage.removeItem('akwam_scroll_pos');
   } catch (_) {}
   progressSection.classList.add('hidden');
   selectionSection.classList.add('hidden');
@@ -502,6 +525,95 @@ function resetSearchUI() {
   progressText.textContent = '';
   progressBar.style.width = '0%';
   startProcessBtn.disabled = false;
+  updateResetButtonVisibility();
+}
+
+function updateResetButtonVisibility() {
+  const hasQuery = Boolean(searchInput.value.trim());
+  const hasResults = !resultsSection.classList.contains('hidden') && resultsContainer.children.length > 0;
+  const hasCandidates = !selectionSection.classList.contains('hidden') && candidatesList.children.length > 0;
+  const hasSavedState = Boolean(sessionStorage.getItem('akwam_last_results') || sessionStorage.getItem('akwam_last_query'));
+  const isBusy = searchBtn.disabled;
+
+  if (clearInputBtn) {
+    clearInputBtn.classList.toggle('hidden', !hasQuery || isBusy);
+  }
+
+  const shouldShowReset = (hasQuery || hasResults || hasCandidates || hasSavedState) && !isBusy;
+  if (resetBtn) {
+    resetBtn.classList.toggle('hidden', !shouldShowReset);
+  }
+}
+
+async function handleResetRequest() {
+  const hasResults = !resultsSection.classList.contains('hidden') && resultsContainer.children.length > 0;
+
+  if (hasResults) {
+    const result = await Swal.fire({
+      ...SWAL_BASE,
+      icon: 'question',
+      title: 'إعادة ضبط الصفحة؟',
+      text: 'هل تريد مسح جميع نتائج البحث الحالية والبدء من جديد؟',
+      showCancelButton: true,
+      confirmButtonText: 'نعم، مسح وابدأ من جديد',
+      cancelButtonText: 'إلغاء',
+      confirmButtonColor: '#ef4444',
+      cancelButtonColor: '#475569',
+    });
+
+    if (!result.isConfirmed) return;
+  }
+
+  await resetAll();
+}
+
+async function resetAll() {
+  const jobId = currentJobId;
+
+  // Cleanup active events and queue polling
+  cleanupJob();
+
+  // Cancel job on backend if one was running
+  if (jobId) {
+    try {
+      await fetch(`/akwam/jobs/${jobId}`, { method: 'DELETE' });
+    } catch (_) {}
+  }
+
+  // Clear all cached search states in sessionStorage
+  try {
+    sessionStorage.removeItem('akwam_last_results');
+    sessionStorage.removeItem('akwam_last_query');
+    sessionStorage.removeItem('akwam_last_job_id');
+    sessionStorage.removeItem('akwam_scroll_pos');
+  } catch (_) {}
+
+  // Reset UI components
+  resetSearchUI();
+  searchInput.value = '';
+  setBusy(false);
+  updateResetButtonVisibility();
+
+  // Smooth scroll back to top
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  // Focus search input so user can type immediately
+  setTimeout(() => {
+    searchInput.focus();
+  }, 100);
+
+  // Show a clean Toast notification confirming the reset
+  Swal.fire({
+    icon: 'success',
+    title: 'تمت إعادة ضبط الصفحة',
+    text: 'تم مسح النتائج السابقة وأصبحت الصفحة جاهزة لبحث جديد.',
+    toast: true,
+    position: 'top-end',
+    showConfirmButton: false,
+    timer: 2500,
+    timerProgressBar: true,
+    customClass: { popup: 'swal-rtl' },
+  });
 }
 
 async function cancelSearch() {
@@ -742,6 +854,7 @@ function renderResults(data) {
   }
 
   applyCapsuleFilter(currentCapsuleFilter);
+  updateResetButtonVisibility();
 }
 
 function applyCapsuleFilter(filter) {
@@ -1162,6 +1275,7 @@ function setBusy(busy) {
   searchBtn.disabled = busy;
   searchInput.disabled = busy;
   cancelBtn.classList.toggle('hidden', !busy);
+  updateResetButtonVisibility();
 }
 
 function cleanupEvents() {
@@ -1245,6 +1359,8 @@ function restoreSearchState() {
         sessionStorage.removeItem('akwam_scroll_pos');
       }, 150);
     }
+
+    updateResetButtonVisibility();
   } catch (err) {
     console.error('Failed to restore search state:', err);
   }
