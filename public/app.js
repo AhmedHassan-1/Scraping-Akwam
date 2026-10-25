@@ -684,7 +684,12 @@ function renderResults(data) {
   );
   const previouslyClosedSeries = new Set(
     [...document.querySelectorAll('.series-capsule-card:not(.is-open)')]
-      .map((el) => el.dataset.seriesKey)
+      .map((el) => el.dataset.seriesKey || el.dataset.itemKey)
+      .filter(Boolean),
+  );
+  const previouslyClosedMovies = new Set(
+    [...document.querySelectorAll('.movie-capsule-card:not(.is-open)')]
+      .map((el) => el.dataset.itemKey)
       .filter(Boolean),
   );
   const moviesGroupWasClosed = Boolean(document.querySelector('.capsule-movies:not(.is-open)'));
@@ -767,7 +772,7 @@ function renderResults(data) {
     resultsContainer.appendChild(navBar);
   }
 
-  // 2. Movies Capsule Container (Collapsible)
+  // 2. Movies Container (Collapsible)
   if (allMovies.length > 0) {
     const moviesSection = document.createElement('div');
     const isMoviesOpen = !moviesGroupWasClosed;
@@ -776,11 +781,11 @@ function renderResults(data) {
       <div class="capsule-group-header" role="button" tabindex="0" aria-expanded="${isMoviesOpen}">
         <div class="capsule-title-pill">
           <span class="pill-icon">🎬</span>
-          <h3>كبسولة الأفلام</h3>
+          <h3>الأفلام</h3>
         </div>
         <div class="capsule-header-meta">
           <span class="capsule-count-tag">${allMovies.length} فيلم</span>
-          <span class="capsule-group-toggle-arrow" aria-label="تبديل عرض كبسولة الأفلام">
+          <span class="capsule-group-toggle-arrow" aria-label="تبديل عرض الأفلام">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
@@ -805,12 +810,20 @@ function renderResults(data) {
 
     const grid = moviesSection.querySelector('.movies-capsule-grid');
     for (const movie of allMovies) {
-      grid.appendChild(renderItemCard(movie, false, previouslyOpenKeys, previouslyClosedSeries));
+      grid.appendChild(
+        renderItemCard(
+          movie,
+          false,
+          previouslyOpenKeys,
+          previouslyClosedSeries,
+          previouslyClosedMovies,
+        ),
+      );
     }
     resultsContainer.appendChild(moviesSection);
   }
 
-  // 3. Series Capsule Container (Collapsible)
+  // 3. Series Container (Collapsible)
   if (allSeries.length > 0) {
     const seriesSection = document.createElement('div');
     const isSeriesOpen = !seriesGroupWasClosed;
@@ -819,11 +832,11 @@ function renderResults(data) {
       <div class="capsule-group-header" role="button" tabindex="0" aria-expanded="${isSeriesOpen}">
         <div class="capsule-title-pill">
           <span class="pill-icon">📺</span>
-          <h3>كبسولة المسلسلات</h3>
+          <h3>المسلسلات</h3>
         </div>
         <div class="capsule-header-meta">
           <span class="capsule-count-tag">${allSeries.length} مسلسل</span>
-          <span class="capsule-group-toggle-arrow" aria-label="تبديل عرض كبسولة المسلسلات">
+          <span class="capsule-group-toggle-arrow" aria-label="تبديل عرض المسلسلات">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
@@ -848,7 +861,15 @@ function renderResults(data) {
 
     const list = seriesSection.querySelector('.series-capsule-list');
     for (const s of allSeries) {
-      list.appendChild(renderItemCard(s, true, previouslyOpenKeys, previouslyClosedSeries));
+      list.appendChild(
+        renderItemCard(
+          s,
+          true,
+          previouslyOpenKeys,
+          previouslyClosedSeries,
+          previouslyClosedMovies,
+        ),
+      );
     }
     resultsContainer.appendChild(seriesSection);
   }
@@ -915,7 +936,13 @@ function openWatchPage(payload) {
   }
 }
 
-function renderItemCard(item, isSeriesHint, previouslyOpenKeys, previouslyClosedSeries) {
+function renderItemCard(
+  item,
+  isSeriesHint,
+  previouslyOpenKeys,
+  previouslyClosedSeries,
+  previouslyClosedMovies,
+) {
   const card = document.createElement('article');
 
   // Comprehensive episode discovery
@@ -948,15 +975,18 @@ function renderItemCard(item, isSeriesHint, previouslyOpenKeys, previouslyClosed
   }
 
   const isSeries = Boolean(isSeriesHint || (episodes && episodes.length > 0));
-  const seriesKey = String(item.Title || '').trim();
-  card.dataset.seriesKey = seriesKey;
+  const itemKey = String(item.Title || '').trim();
+  card.dataset.itemKey = itemKey;
+  card.dataset.seriesKey = itemKey;
 
-  // By default, series capsule is open unless explicitly closed previously
-  const isSeriesOpen = !previouslyClosedSeries || !previouslyClosedSeries.has(seriesKey);
+  // By default, card is open unless explicitly closed previously
+  const isCardOpen = isSeries
+    ? !previouslyClosedSeries || !previouslyClosedSeries.has(itemKey)
+    : !previouslyClosedMovies || !previouslyClosedMovies.has(itemKey);
 
   card.className = isSeries
-    ? `result-card series-capsule-card ${isSeriesOpen ? 'is-open' : ''}`
-    : 'result-card movie-card';
+    ? `result-card series-capsule-card ${isCardOpen ? 'is-open' : ''}`
+    : `result-card movie-card movie-capsule-card ${isCardOpen ? 'is-open' : ''}`;
 
   const posterDirect = item.Image?.trim() || '';
   const posterProxied = posterDirect ? proxyImageUrl(posterDirect) : '';
@@ -983,13 +1013,13 @@ function renderItemCard(item, isSeriesHint, previouslyOpenKeys, previouslyClosed
   const epCount = Array.isArray(episodes) ? episodes.length : 0;
 
   card.innerHTML = `
-    <div class="result-hero ${isSeries ? 'series-capsule-hero' : ''}" ${isSeries ? `role="button" tabindex="0" aria-expanded="${isSeriesOpen}"` : ''}>
+    <div class="result-hero ${isSeries ? 'series-capsule-hero' : 'movie-capsule-hero'}" role="button" tabindex="0" aria-expanded="${isCardOpen}">
       <div class="result-poster-wrap">${posterHtml}</div>
       <div class="result-body">
         ${
           isSeries
             ? `<div class="series-capsule-top-bar">
-                 <div class="series-pill-badge">📺 كبسولة المسلسل</div>
+                 <div class="series-pill-badge">📺 مسلسل</div>
                  <div class="series-capsule-controls">
                    <span class="series-ep-badge">${epCount} حلقة متوفرة</span>
                    <span class="series-toggle-arrow" aria-label="عرض/إخفاء الحلقات">
@@ -999,7 +1029,17 @@ function renderItemCard(item, isSeriesHint, previouslyOpenKeys, previouslyClosed
                    </span>
                  </div>
                </div>`
-            : ''
+            : `<div class="movie-capsule-top-bar">
+                 <div class="movie-pill-badge">🎬 فيلم</div>
+                 <div class="movie-capsule-controls">
+                   ${allQualities.length ? `<span class="movie-q-badge">${allQualities.length} ${allQualities.length === 1 ? 'جودة متوفرة' : 'جودات متوفرة'}</span>` : ''}
+                   <span class="movie-toggle-arrow" aria-label="عرض/إخفاء روابط الفيلم">
+                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                       <polyline points="6 9 12 15 18 9"></polyline>
+                     </svg>
+                   </span>
+                 </div>
+               </div>`
         }
         <h3>${escapeHtml(item.Title || '')}</h3>
         <div class="result-meta">${chips}</div>
@@ -1019,24 +1059,23 @@ function renderItemCard(item, isSeriesHint, previouslyOpenKeys, previouslyClosed
   const posterImg = card.querySelector('.result-poster');
   if (posterImg?.tagName === 'IMG') attachThumbFallback(posterImg);
 
-  // If this is a series, clicking the series hero header toggles the series capsule open/close!
-  if (isSeries) {
-    const seriesHero = card.querySelector('.series-capsule-hero');
-    function toggleSeriesCard() {
-      const open = card.classList.toggle('is-open');
-      seriesHero?.setAttribute('aria-expanded', open ? 'true' : 'false');
-    }
-    seriesHero?.addEventListener('click', (e) => {
-      if (e.target.closest('a') || e.target.closest('button')) return;
-      toggleSeriesCard();
-    });
-    seriesHero?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        toggleSeriesCard();
-      }
-    });
+  // Clicking the hero header toggles the card open/close for both series and movies!
+  const hero = card.querySelector('.result-hero');
+  function toggleCard() {
+    const open = card.classList.toggle('is-open');
+    hero?.setAttribute('aria-expanded', open ? 'true' : 'false');
   }
+  hero?.addEventListener('click', (e) => {
+    if (e.target.closest('a') || e.target.closest('button')) return;
+    toggleCard();
+  });
+  hero?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      if (e.target.closest('a') || e.target.closest('button')) return;
+      e.preventDefault();
+      toggleCard();
+    }
+  });
 
   const watchAllBtn = card.querySelector('.watch-all-btn');
   if (watchAllBtn && allQualities.length) {
