@@ -22,6 +22,7 @@ import { AkwamSearchService } from '../infrastructure/scraping/akwam-search.serv
 import { AkwamDownloadResolverService } from '../infrastructure/scraping/akwam-download-resolver.service';
 import { AkwamMediaService } from '../infrastructure/scraping/akwam-media.service';
 import { AkwamImageProxyService } from '../infrastructure/scraping/akwam-image-proxy.service';
+import { AkwamStreamService } from '../infrastructure/scraping/akwam-stream.service';
 import { LegacyResponseFormatter } from '../infrastructure/scraping/legacy-response-formatter.service';
 import { AkwamHtmlScraperService } from '../infrastructure/scraping/akwam-html-scraper.service';
 
@@ -55,6 +56,7 @@ import { AkwamJobProcessor } from '../infrastructure/queue/akwam-job.processor';
     AkwamDownloadResolverService,
     AkwamMediaService,
     AkwamImageProxyService,
+    AkwamStreamService,
     LegacyResponseFormatter,
     AkwamHtmlScraperService,
 

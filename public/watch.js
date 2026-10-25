@@ -14,7 +14,6 @@ let sources = [];
 let currentIndex = 0;
 let errorCount = 0;
 let retryTimer = null;
-let blobUrlCache = {};
 let data = null;
 
 /* ─────────────────────────────────────────────
@@ -32,7 +31,7 @@ function qualitySize(label = "") {
 }
 
 function isNonStreamable(url) {
-  return /\.(mkv|avi|rar|zip|torrent)(\?|$)/i.test(url.toLowerCase());
+  return /\.(rar|zip|torrent)(\?|$)/i.test(url.toLowerCase());
 }
 
 function showHint(msg) {
@@ -46,31 +45,10 @@ function hideHint() {
 }
 
 /* ─────────────────────────────────────────────
-   BLOB FALLBACK
-───────────────────────────────────────────── */
-
-async function tryBlob(url) {
-  if (blobUrlCache[url]) return blobUrlCache[url];
-  try {
-    const res = await fetch(url, { mode: "cors" });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const objectUrl = URL.createObjectURL(await res.blob());
-    blobUrlCache[url] = objectUrl;
-    return objectUrl;
-  } catch {
-    return null;
-  }
-}
-
-function revokeAllBlobs() {
-  Object.values(blobUrlCache).forEach(URL.revokeObjectURL.bind(URL));
-  blobUrlCache = {};
-}
-
-/* ─────────────────────────────────────────────
    CORE SOURCE HANDLER
-   Plays the direct download MP4 URL in Plyr / HTML5
-   and assigns the exact same link to downloadBtn
+   Streams via high-performance HTTP 206 Partial Content proxy
+   (guarantees video/mp4 MIME & inline headers across all browsers)
+   and assigns the direct CDN link to downloadBtn
 ───────────────────────────────────────────── */
 
 async function applySource(index, preserveTime) {
@@ -91,7 +69,7 @@ async function applySource(index, preserveTime) {
   }
 
   if (isNonStreamable(src.url)) {
-    showHint("هذا الملف بصيغة لا تدعم البث المباشر (مثل MKV). يرجى استخدام زر التحميل.");
+    showHint("هذا الملف مضغوط (RAR/ZIP). يرجى استخدام زر التحميل.");
     return;
   }
 
@@ -111,6 +89,7 @@ async function applySource(index, preserveTime) {
   // ── canplay ──────────────────────────────────────
   function onCanPlay() {
     errorCount = 0;
+    hideHint();
     if (savedTime > 1) {
       try { media.currentTime = savedTime; } catch (_) {}
     }
@@ -125,27 +104,30 @@ async function applySource(index, preserveTime) {
 
   media.addEventListener("canplay", onCanPlay, { once: true });
 
-  // ── error: جرب blob أو انتقل للمصدر التالي ───────
-  async function onMediaError() {
+  // ── error fallback ────────────────────────────────
+  function onMediaError() {
     media.removeEventListener("canplay", onCanPlay);
-    showHint(`جارٍ محاولة تشغيل بديلة لـ "${src.label}"…`);
 
-    const blobUrl = await tryBlob(src.url);
-    if (blobUrl) {
-      hideHint();
-      media.src = blobUrl;
+    // Fallback 1: If stream proxy had an issue, attempt direct CDN URL
+    if (media.src && media.src.includes("/akwam/stream")) {
+      console.warn("Stream proxy failed, trying direct CDN link fallback...");
+      media.src = src.url;
       media.load();
       media.addEventListener("canplay", onCanPlay, { once: true });
-      media.addEventListener("error", handleError, { once: true });
-    } else {
-      handleError();
+      media.addEventListener("error", () => handleError(), { once: true });
+      return;
     }
+
+    handleError();
   }
 
   media.addEventListener("error", onMediaError, { once: true });
 
-  // ── set source (Same direct download link) ────────
-  media.src = src.url;
+  // ── set stream URL (HTTP 206 Partial Content + video/mp4)
+  const streamUrl = src.url.startsWith("/akwam/stream")
+    ? src.url
+    : `/akwam/stream?url=${encodeURIComponent(src.url)}`;
+  media.src = streamUrl;
   media.load();
 
   // ── sync Plyr quality badge if supported ──────────
@@ -268,23 +250,37 @@ function buildPlyr(startIndex) {
 ───────────────────────────────────────────── */
 
 function loadWatchData() {
-  let raw;
-  try {
-    raw = sessionStorage.getItem("akwamWatch");
-  } catch {
-    raw = null;
-  }
+  const params = new URLSearchParams(window.location.search);
+  const qUrl = params.get("url");
+  const qTitle = params.get("title");
+  const qPoster = params.get("poster");
 
-  if (!raw) {
-    location.href = "/";
-    return;
-  }
+  if (qUrl) {
+    data = {
+      title: qTitle || "مشاهدة الفيديو",
+      poster: qPoster || "",
+      sources: [{ label: "الأصلية", url: qUrl, size: "" }],
+      startQuality: "الأصلية",
+    };
+  } else {
+    let raw;
+    try {
+      raw = sessionStorage.getItem("akwamWatch");
+    } catch {
+      raw = null;
+    }
 
-  try {
-    data = JSON.parse(raw);
-  } catch {
-    location.href = "/";
-    return;
+    if (!raw) {
+      location.href = "/";
+      return;
+    }
+
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      location.href = "/";
+      return;
+    }
   }
 
   sources = (data.sources || []).filter((s) => s?.url?.startsWith("http"));
@@ -339,7 +335,6 @@ function loadWatchData() {
   buildPlyr(startIndex);
 }
 
-window.addEventListener("beforeunload", revokeAllBlobs);
 document.addEventListener("DOMContentLoaded", loadWatchData);
 
 document.addEventListener("DOMContentLoaded", () => {

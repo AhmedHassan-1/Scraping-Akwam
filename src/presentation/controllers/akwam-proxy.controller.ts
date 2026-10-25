@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Query,
+  Req,
   Res,
   UseGuards,
 } from '@nestjs/common';
@@ -15,17 +16,22 @@ import {
   ApiProduces,
   ApiOkResponse,
 } from '@nestjs/swagger';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { UserRateLimitGuard } from '../../queue/user-rate-limit.guard';
 import { RateLimit } from '../../queue/rate-limit.decorator';
 import { ProxyImageDto } from '../../application/dtos/proxy-image.dto';
+import { StreamVideoDto } from '../../application/dtos/stream-video.dto';
 import { ErrorResponseDto } from '../../application/dtos/error-response.dto';
 import { ProxyImageUseCase } from '../../application/use-cases/proxy-image.use-case';
+import { AkwamStreamService } from '../../infrastructure/scraping/akwam-stream.service';
 
 @ApiTags('utils')
 @Controller('akwam')
 export class AkwamProxyController {
-  constructor(private readonly proxyImageUseCase: ProxyImageUseCase) {}
+  constructor(
+    private readonly proxyImageUseCase: ProxyImageUseCase,
+    private readonly streamService: AkwamStreamService,
+  ) {}
 
   @ApiOperation({
     summary: 'بروكسي جلب صور البوسترات الآمن (Safe Image Proxy)',
@@ -75,5 +81,30 @@ export class AkwamProxyController {
       'Cache-Control': 'public, max-age=86400',
     });
     res.send(buffer);
+  }
+
+  @ApiOperation({
+    summary: 'بروكسي البث المباشر للفيديو بمواصفات HTTP 206 Partial Content (Live Streaming Proxy)',
+    description:
+      'يبث مقطع الفيديو المباشر من سيرفرات التوزيع المعتمدة لمشغل Plyr.io والمتصفحات.\n\n' +
+      '**الميزات الفنية:**\n' +
+      '- 🎬 **Direct HTML5 & Plyr.io Playback:** يفرض ترويسة `Content-Type: video/mp4` و `Content-Disposition: inline` مما يمكن المشغل من البدء في أقل من 200ms.\n' +
+      '- ⚡ **Full Range Requests (206):** يدعم التقديم والترجيع (Seeking) السريع دون تحميل الملف بالكامل.\n' +
+      '- 🛡️ **SSRF Protection:** قائمة بيضاء صارمة لسيرفرات التحميل والتوزيع (`downet.net`, `akwam.*`, `ak.sv`).',
+  })
+  @ApiQuery({
+    name: 'url',
+    required: true,
+    description: 'رابط ملف الفيديو المباشر من سيرفرات التوزيع المعتمدة',
+    example: 'https://s301d3.downet.net/download/1792999494/6addaec66a796/Inception.2010.480p.BluRay.AKWAM.mp4',
+  })
+  @ApiProduces('video/mp4', 'video/webm', 'video/x-matroska')
+  @Get('stream')
+  streamVideo(
+    @Query() dto: StreamVideoDto,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    this.streamService.streamVideo(dto.url, req, res);
   }
 }
