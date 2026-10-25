@@ -30,13 +30,18 @@ export class AkwamDownloadResolverService {
 
       try {
         const finalUrl = await this.resolveSingleQuality(q.downloadUrl, signal);
+        const resolvedUrl = finalUrl || q.downloadUrl;
         resolved.push({
           ...q,
-          downloadUrl: finalUrl || q.downloadUrl,
+          downloadUrl: resolvedUrl,
+          watchUrl: resolvedUrl,
         });
       } catch (err) {
         this.logger.warn(`Failed to resolve quality ${q.quality}: ${err}`);
-        resolved.push(q);
+        resolved.push({
+          ...q,
+          watchUrl: q.downloadUrl,
+        });
       }
     }
 

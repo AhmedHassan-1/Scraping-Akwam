@@ -748,105 +748,138 @@ button:disabled {
 
 /* ─── Qualities List & Action Buttons ───────────────────────────────────── */
 
+/* ─── Qualities List & Direct Actions ───────────────────────────────────── */
+
+.qualities {
+  margin-top: 1rem;
+}
+
+.qualities-title,
 .qualities h4 {
   font-size: 0.88rem;
   color: #94a3b8;
   font-weight: 600;
   margin-bottom: 0.85rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
 }
 
 .quality-list {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.65rem;
 }
 
 .quality-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 1rem;
+  padding: 0.8rem 1.15rem;
   background: rgba(10, 14, 22, 0.7);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   transition: all 0.2s ease;
   gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .quality-row:hover {
   border-color: rgba(99, 102, 241, 0.45);
-  background: rgba(15, 21, 33, 0.9);
+  background: rgba(15, 21, 33, 0.95);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
-.quality-label {
-  font-size: 0.95rem;
+.quality-info-col {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.quality-name-badge {
+  font-size: 0.92rem;
   font-weight: 700;
   color: #f8fafc;
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  padding: 0.25rem 0.65rem;
+  border-radius: 6px;
+  letter-spacing: 0.02em;
 }
 
-.quality-size {
-  font-size: 0.82rem;
+.quality-size-badge {
+  font-size: 0.8rem;
+  font-weight: 500;
   color: #94a3b8;
-  margin-top: 0.15rem;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.2rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+.quality-actions-col,
 .quality-actions {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.65rem;
   flex-shrink: 0;
 }
 
+.btn-watch-stream,
 .btn-watch {
   background: rgba(16, 185, 129, 0.15);
   color: #34d399;
   border: 1px solid rgba(16, 185, 129, 0.35);
-  padding: 0.5rem 1rem;
+  padding: 0.5rem 1.1rem;
   font-size: 0.86rem;
   font-weight: 600;
+  font-family: inherit;
   border-radius: var(--radius-sm);
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.45rem;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+.btn-watch-stream:hover,
 .btn-watch:hover {
-  background: rgba(16, 185, 129, 0.28);
+  background: #10b981;
   color: #ffffff;
   border-color: #10b981;
-  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+  transform: translateY(-1px);
 }
 
+.btn-download-direct,
 .quality-download {
   background: rgba(59, 130, 246, 0.15);
   color: #93c5fd;
   border: 1px solid rgba(59, 130, 246, 0.35);
-  padding: 0.5rem 1rem;
+  padding: 0.5rem 1.1rem;
   font-size: 0.86rem;
   font-weight: 600;
+  font-family: inherit;
   border-radius: var(--radius-sm);
   text-decoration: none;
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  transition: all 0.2s;
+  gap: 0.45rem;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+.btn-download-direct:hover,
 .quality-download:hover {
-  background: rgba(59, 130, 246, 0.3);
+  background: #3b82f6;
   color: #ffffff;
   border-color: #3b82f6;
-  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.3);
+  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.35);
+  transform: translateY(-1px);
 }
 
-/* ─── Episode Accordion (Polished) ──────────────────────────────────────── */
+/* ─── Episode Closed Rectangle Accordion ────────────────────────────────── */
 
 .episodes-container {
-  margin-top: 1.25rem;
+  margin-top: 1.5rem;
 }
 
 .episodes-header-row {
@@ -854,12 +887,14 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 1rem;
-  padding-bottom: 0.6rem;
+  padding-bottom: 0.75rem;
   border-bottom: 1px solid var(--border);
+  gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .episodes-header-row h4 {
-  font-size: 1rem;
+  font-size: 1.05rem;
   font-weight: 700;
   color: #f1f5f9;
 }
@@ -874,9 +909,10 @@ button:disabled {
   border: 1px solid var(--border);
   color: var(--text-muted);
   border-radius: var(--radius-sm);
-  padding: 0.35rem 0.75rem;
-  font-size: 0.8rem;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.82rem;
   font-weight: 500;
+  font-family: inherit;
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -884,40 +920,44 @@ button:disabled {
 .btn-toggle-all:hover {
   color: #ffffff;
   border-color: rgba(99, 102, 241, 0.5);
-  background: rgba(99, 102, 241, 0.1);
+  background: rgba(99, 102, 241, 0.12);
 }
 
 .episodes-accordion-list {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.75rem;
 }
 
+/* The closed rectangular episode card */
 .episode-accordion-item {
-  background: rgba(10, 14, 22, 0.65);
+  background: rgba(10, 14, 22, 0.75);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   overflow: hidden;
-  transition: all 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
 }
 
 .episode-accordion-item:hover {
-  border-color: rgba(99, 102, 241, 0.4);
+  border-color: rgba(99, 102, 241, 0.45);
+  background: rgba(14, 20, 32, 0.85);
+  transform: translateY(-1px);
 }
 
 .episode-accordion-item.is-open {
   border-color: rgba(99, 102, 241, 0.7);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35), 0 0 15px rgba(99, 102, 241, 0.12);
-  background: rgba(15, 21, 33, 0.85);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 16px rgba(99, 102, 241, 0.12);
+  background: rgba(15, 21, 33, 0.95);
 }
 
+/* The rectangular header bar */
 .episode-header-btn {
   width: 100%;
   background: transparent;
   border: none;
   color: var(--text);
-  text-align: right;
-  padding: 0.85rem 1.15rem;
+  padding: 1rem 1.25rem;
   font-family: inherit;
   font-size: 0.95rem;
   font-weight: 600;
@@ -926,61 +966,115 @@ button:disabled {
   justify-content: space-between;
   cursor: pointer;
   user-select: none;
-  gap: 0.75rem;
-  transition: background 0.15s;
+  gap: 1rem;
+  transition: background 0.2s ease;
 }
 
 .episode-header-btn:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.025);
 }
 
 .episode-header-right {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
+  gap: 0.75rem;
+  min-width: 0;
 }
 
-.episode-icon {
-  font-size: 1.1rem;
+.episode-badge-pill {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #a5b4fc;
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  padding: 0.25rem 0.65rem;
+  border-radius: 6px;
+  white-space: nowrap;
 }
 
 .episode-title-text {
   color: #f1f5f9;
+  font-size: 0.98rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .episode-header-left {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  flex-shrink: 0;
 }
 
 .episode-badge-qualities {
-  font-size: 0.76rem;
+  font-size: 0.78rem;
   font-weight: 600;
-  color: #93c5fd;
-  background: rgba(59, 130, 246, 0.15);
-  border: 1px solid rgba(59, 130, 246, 0.35);
-  padding: 0.2rem 0.65rem;
+  color: #38bdf8;
+  background: rgba(6, 182, 212, 0.12);
+  border: 1px solid rgba(6, 182, 212, 0.35);
+  padding: 0.25rem 0.65rem;
   border-radius: 999px;
+  white-space: nowrap;
 }
 
-.episode-toggle-icon {
-  font-size: 0.75rem;
+.btn-episode-quick-watch {
+  background: var(--accent-gradient);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
+}
+
+.btn-episode-quick-watch:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.15);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+}
+
+/* The arrow chevron */
+.episode-chevron-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--text-muted);
-  transition: transform 0.25s ease, color 0.2s;
-  display: inline-block;
+  transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.episode-accordion-item.is-open .episode-toggle-icon {
+.episode-header-btn:hover .episode-chevron-btn {
+  color: #ffffff;
+  background: rgba(99, 102, 241, 0.15);
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.episode-accordion-item.is-open .episode-chevron-btn {
   transform: rotate(-180deg);
+  background: rgba(99, 102, 241, 0.25);
   color: #818cf8;
+  border-color: rgba(99, 102, 241, 0.6);
 }
 
+/* Expanded body */
 .episode-body {
   display: none;
-  padding: 1rem 1.15rem 1.15rem;
+  padding: 1.15rem 1.25rem 1.25rem;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(8, 12, 19, 0.6);
+  background: rgba(7, 10, 16, 0.65);
 }
 
 .episode-accordion-item.is-open .episode-body {

@@ -4,6 +4,7 @@ const watchTitle = $("#watchTitle");
 const watchSubtitle = $("#watchSubtitle");
 const watchPoster = $("#watchPoster");
 const qualitySection = $("#qualitySection");
+const qualitySelect = $("#qualitySelect");
 const downloadBtn = $("#downloadBtn");
 const playerHint = $("#playerHint");
 const video = $("#player");
@@ -24,8 +25,9 @@ function qualitySize(label = "") {
   const n = (label || "").match(/(\d{3,4})/);
   if (n) return parseInt(n[1], 10);
   if (/4k|2160/i.test(label)) return 2160;
-  if (/fhd/i.test(label)) return 1080;
-  if (/hd/i.test(label)) return 720;
+  if (/fhd|1080/i.test(label)) return 1080;
+  if (/hd|720/i.test(label)) return 720;
+  if (/480/i.test(label)) return 480;
   return 0;
 }
 
@@ -65,10 +67,8 @@ function revokeAllBlobs() {
 
 /* ─────────────────────────────────────────────
    CORE SOURCE HANDLER
-   — منطق التحميل مطابق للأصل —
-   إصلاحات مضافة فقط:
-   1. errorCount يترست لما تحميل ينجح
-   2. poster يتحط قبل media.load() عشان يظهر أثناء البفرة
+   Plays the direct download MP4 URL in Plyr
+   and assigns the exact same link to downloadBtn
 ───────────────────────────────────────────── */
 
 async function applySource(index, preserveTime) {
@@ -80,8 +80,12 @@ async function applySource(index, preserveTime) {
   downloadBtn.download = "";
   watchSubtitle.textContent = src.label + (src.size ? ` — ${src.size}` : "");
 
+  if (qualitySelect && qualitySelect.value != index) {
+    qualitySelect.value = index;
+  }
+
   if (isNonStreamable(src.url)) {
-    showHint("هذا الرابط لا يُشغَّل مباشرةً في المتصفح. استخدم زر التحميل.");
+    showHint("هذا الملف بصيغة لا تدعم البث المباشر (مثل MKV). يرجى استخدام زر التحميل.");
     return;
   }
 
@@ -94,12 +98,12 @@ async function applySource(index, preserveTime) {
   // ── reset ────────────────────────────────────────
   media.pause();
   media.removeAttribute("src");
-  if (data?._poster) media.setAttribute("poster", data._poster); // poster قبل load
+  if (data?._poster) media.setAttribute("poster", data._poster);
   media.load();
 
   // ── canplay ──────────────────────────────────────
   function onCanPlay() {
-    errorCount = 0; // إصلاح: ترست العداد لما التحميل ينجح
+    errorCount = 0;
     if (savedTime > 1) media.currentTime = savedTime;
     if (wasPlaying) player.play().catch(() => {});
   }
@@ -109,7 +113,7 @@ async function applySource(index, preserveTime) {
   // ── error: جرب blob أو انتقل للمصدر التالي ───────
   async function onMediaError() {
     media.removeEventListener("canplay", onCanPlay);
-    showHint(`جارٍ محاولة طريقة بديلة لـ "${src.label}"…`);
+    showHint(`جارٍ محاولة تشغيل بديلة لـ "${src.label}"…`);
 
     const blobUrl = await tryBlob(src.url);
     if (blobUrl) {
@@ -125,7 +129,7 @@ async function applySource(index, preserveTime) {
 
   media.addEventListener("error", onMediaError, { once: true });
 
-  // ── set source ───────────────────────────────────
+  // ── set source (Same direct download link) ────────
   media.src = src.url;
   media.load();
 
@@ -140,8 +144,6 @@ async function applySource(index, preserveTime) {
 
 /* ─────────────────────────────────────────────
    ERROR HANDLER
-   إصلاح: handleError بيتجاهل لو فيه applySource
-   شغال (تحقق من retryTimer أو switching)
 ───────────────────────────────────────────── */
 
 function handleError() {
@@ -149,7 +151,7 @@ function handleError() {
   errorCount++;
 
   if (errorCount >= sources.length) {
-    showHint("تعذّر تشغيل جميع الروابط المتاحة.");
+    showHint("تعذّر تشغيل الفيديو مباشرةً في المتصفح. يمكنك تحميله بالضغط على زر التحميل بالأسفل.");
     errorCount = 0;
     return;
   }
@@ -226,7 +228,6 @@ function buildPlyr(startIndex) {
   player = new Plyr(video, opts);
   player.on("error", handleError);
 
-  // poster بعد ما Plyr يبني الـ DOM
   if (data?._poster) {
     player.on("ready", () => {
       player.media.setAttribute("poster", data._poster);
@@ -266,7 +267,7 @@ function loadWatchData() {
     return;
   }
 
-  watchTitle.textContent = data.title || "مشاهدة";
+  watchTitle.textContent = data.title || "مشاهدة الحلقة";
   watchSubtitle.textContent = data.subtitle || "";
 
   if (data.poster) {
@@ -274,10 +275,8 @@ function loadWatchData() {
     data._poster = proxyUrl;
     watchPoster.src = proxyUrl;
     watchPoster.classList.remove("hidden");
-    video.setAttribute("poster", proxyUrl); // قبل Plyr يعمل wrap
+    video.setAttribute("poster", proxyUrl);
   }
-
-  qualitySection.classList.add("hidden");
 
   let startIndex = 0;
   if (data.startQuality) {
@@ -285,13 +284,35 @@ function loadWatchData() {
     if (idx >= 0) startIndex = idx;
   }
 
+  // Populate Quality Select dropdown if multiple qualities exist
+  if (sources.length > 1 && qualitySelect) {
+    qualitySelect.innerHTML = "";
+    sources.forEach((s, idx) => {
+      const opt = document.createElement("option");
+      opt.value = idx;
+      opt.textContent = s.label + (s.size ? ` — (${s.size})` : "");
+      qualitySelect.appendChild(opt);
+    });
+    qualitySelect.value = startIndex;
+    qualitySection.classList.remove("hidden");
+
+    qualitySelect.addEventListener("change", () => {
+      const idx = parseInt(qualitySelect.value, 10);
+      if (!isNaN(idx) && idx >= 0 && idx < sources.length && idx !== currentIndex) {
+        errorCount = 0;
+        clearTimeout(retryTimer);
+        applySource(idx, true);
+      }
+    });
+  } else if (qualitySection) {
+    qualitySection.classList.add("hidden");
+  }
+
   buildPlyr(startIndex);
 }
 
 window.addEventListener("beforeunload", revokeAllBlobs);
 document.addEventListener("DOMContentLoaded", loadWatchData);
-// TEST
-
 
 document.addEventListener("DOMContentLoaded", () => {
   const backBtn = document.getElementById("backToSearchBtn");

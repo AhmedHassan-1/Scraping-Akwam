@@ -581,12 +581,13 @@ function renderResults(data) {
     const items = group.slice(1);
     if (!items.length) continue;
 
+    const isSeriesGroup = groupType === 'Series' || groupType === 'series';
     const section = document.createElement('div');
     section.className = 'result-group';
-    section.innerHTML = `<h3>${groupType === 'Movies' ? '🎬 أفلام' : '📺 مسلسلات'}</h3>`;
+    section.innerHTML = `<h3>${isSeriesGroup ? '📺 مسلسلات' : '🎬 أفلام'}</h3>`;
 
     for (const item of items) {
-      section.appendChild(renderItemCard(item, groupType === 'Series'));
+      section.appendChild(renderItemCard(item, isSeriesGroup));
     }
 
     resultsContainer.appendChild(section);
@@ -594,6 +595,7 @@ function renderResults(data) {
 }
 
 function extractQualities(obj) {
+  if (!obj || typeof obj !== 'object') return [];
   return Object.keys(obj)
     .filter(
       (k) =>
@@ -607,6 +609,20 @@ function extractQualities(obj) {
     .filter((q) => q.url?.startsWith('http'));
 }
 
+function extractEpisodeNumber(ep, defaultIdx = 0) {
+  const t = String(ep?.Title || '');
+  const m = t.match(/الحلقة\s*(\d+)/i) || t.match(/E(\d+)/i) || t.match(/(\d+)/);
+  if (m) return parseInt(m[1], 10);
+  return defaultIdx + 1;
+}
+
+function cleanEpisodeTitle(rawTitle, index) {
+  if (!rawTitle) return `الحلقة ${index + 1}`;
+  let clean = String(rawTitle).trim();
+  clean = clean.replace(/الحلقة\s*(\d+)\s+\1\b/gi, 'الحلقة $1');
+  return clean;
+}
+
 function openWatchPage(payload) {
   try {
     // Preserve current scroll position before navigating
@@ -618,9 +634,40 @@ function openWatchPage(payload) {
   }
 }
 
-function renderItemCard(item, isSeries) {
+function renderItemCard(item, isSeriesHint) {
   const card = document.createElement('article');
   card.className = 'result-card';
+
+  // Comprehensive episode discovery
+  let episodes = null;
+  if (item.Title && Array.isArray(item[item.Title])) {
+    episodes = item[item.Title];
+  }
+  if (!episodes && item.Title) {
+    const cleanKey = item.Title.trim();
+    const foundKey = Object.keys(item).find(
+      (k) => k.trim() === cleanKey && Array.isArray(item[k]),
+    );
+    if (foundKey) episodes = item[foundKey];
+  }
+  if (!episodes) {
+    episodes = item.episodes || item.Episodes;
+  }
+  if (!episodes) {
+    for (const k of Object.keys(item)) {
+      if (
+        !META_KEYS.has(k) &&
+        Array.isArray(item[k]) &&
+        item[k].length > 0 &&
+        typeof item[k][0] === 'object'
+      ) {
+        episodes = item[k];
+        break;
+      }
+    }
+  }
+
+  const isSeries = Boolean(isSeriesHint || (episodes && episodes.length > 0));
 
   const posterDirect = item.Image?.trim() || '';
   const posterProxied = posterDirect ? proxyImageUrl(posterDirect) : '';
@@ -675,71 +722,75 @@ function renderItemCard(item, isSeries) {
         subtitle: item.Quality || '',
         poster: item.Image,
         sources: allQualities,
+        startQuality: allQualities[0].label,
       });
     });
   }
 
-  if (isSeries) {
-    const epKey = item.Title;
-    const episodes = item[epKey];
-    if (Array.isArray(episodes) && episodes.length > 0) {
-      const epContainer = document.createElement('div');
-      epContainer.className = 'episodes-container';
+  if (isSeries && Array.isArray(episodes) && episodes.length > 0) {
+    const epContainer = document.createElement('div');
+    epContainer.className = 'episodes-container';
 
-      // Header row with count and Expand/Collapse All buttons
-      const headerRow = document.createElement('div');
-      headerRow.className = 'episodes-header-row';
-      headerRow.innerHTML = `
-        <h4>📺 قائمة الحلقات (${episodes.length} حلقة)</h4>
-        <div class="episodes-actions">
-          <button type="button" class="btn-toggle-all" data-action="expand-all">توسيع الكل</button>
-          <button type="button" class="btn-toggle-all" data-action="collapse-all">طي الكل</button>
-        </div>
-      `;
-      epContainer.appendChild(headerRow);
+    // Sort episodes in natural ascending order (Episode 1, 2, ...)
+    const sortedEpisodes = [...episodes].sort((a, b) => {
+      const numA = extractEpisodeNumber(a);
+      const numB = extractEpisodeNumber(b);
+      return numA - numB;
+    });
 
-      const accordionList = document.createElement('div');
-      accordionList.className = 'episodes-accordion-list';
+    // Header row with count and Expand/Collapse All buttons
+    const headerRow = document.createElement('div');
+    headerRow.className = 'episodes-header-row';
+    headerRow.innerHTML = `
+      <h4>📺 قائمة الحلقات المتاحة (${sortedEpisodes.length} حلقة)</h4>
+      <div class="episodes-actions">
+        <button type="button" class="btn-toggle-all" data-action="expand-all">توسيع الكل</button>
+        <button type="button" class="btn-toggle-all" data-action="collapse-all">طي الكل</button>
+      </div>
+    `;
+    epContainer.appendChild(headerRow);
 
-      episodes.forEach((ep, idx) => {
-        accordionList.appendChild(
-          renderEpisodeAccordion(ep, item.Image, item.Title, idx),
-        );
+    const accordionList = document.createElement('div');
+    accordionList.className = 'episodes-accordion-list';
+
+    sortedEpisodes.forEach((ep, idx) => {
+      accordionList.appendChild(
+        renderEpisodeAccordion(ep, item.Image, item.Title, idx),
+      );
+    });
+
+    epContainer.appendChild(accordionList);
+
+    // Expand / Collapse listeners
+    headerRow
+      .querySelector('[data-action="expand-all"]')
+      .addEventListener('click', () => {
+        accordionList
+          .querySelectorAll('.episode-accordion-item')
+          .forEach((el) => {
+            el.classList.add('is-open');
+            el.querySelector('.episode-header-btn')?.setAttribute(
+              'aria-expanded',
+              'true',
+            );
+          });
       });
 
-      epContainer.appendChild(accordionList);
+    headerRow
+      .querySelector('[data-action="collapse-all"]')
+      .addEventListener('click', () => {
+        accordionList
+          .querySelectorAll('.episode-accordion-item')
+          .forEach((el) => {
+            el.classList.remove('is-open');
+            el.querySelector('.episode-header-btn')?.setAttribute(
+              'aria-expanded',
+              'false',
+            );
+          });
+      });
 
-      // Expand / Collapse listeners
-      headerRow
-        .querySelector('[data-action="expand-all"]')
-        .addEventListener('click', () => {
-          accordionList
-            .querySelectorAll('.episode-accordion-item')
-            .forEach((el) => {
-              el.classList.add('is-open');
-              el.querySelector('.episode-header-btn')?.setAttribute(
-                'aria-expanded',
-                'true',
-              );
-            });
-        });
-
-      headerRow
-        .querySelector('[data-action="collapse-all"]')
-        .addEventListener('click', () => {
-          accordionList
-            .querySelectorAll('.episode-accordion-item')
-            .forEach((el) => {
-              el.classList.remove('is-open');
-              el.querySelector('.episode-header-btn')?.setAttribute(
-                'aria-expanded',
-                'false',
-              );
-            });
-        });
-
-      content.appendChild(epContainer);
-    }
+    content.appendChild(epContainer);
   } else {
     content.appendChild(
       renderQualitiesList(allQualities, item.Title, item.Image),
@@ -750,43 +801,85 @@ function renderItemCard(item, isSeries) {
 }
 
 /**
- * Renders each episode as a closed accordion item by default.
- * Clicking the header toggles it open/closed.
+ * Renders each episode as a closed rectangle with arrow.
+ * Clicking the rectangle or arrow toggles it open/closed.
+ * Each quality row enables direct streaming in Plyr.io or direct downloading.
  */
 function renderEpisodeAccordion(ep, seriesPoster, seriesTitle, index) {
   const item = document.createElement('div');
   item.className = 'episode-accordion-item';
   const qualities = extractQualities(ep);
   const qCount = qualities.length;
-  const qBadgeText = qCount > 0 ? `${qCount} جودات متاحة` : 'جاري التجهيز';
+  const qBadgeText = qCount > 0 ? `${qCount} جودات متاحة` : 'لا توجد روابط';
 
-  const epTitle = ep.Title || `الحلقة ${index + 1}`;
+  const epNum = extractEpisodeNumber(ep, index);
+  const epTitle = cleanEpisodeTitle(ep.Title, index);
 
   item.innerHTML = `
-    <button type="button" class="episode-header-btn" aria-expanded="false">
+    <div class="episode-header-btn" role="button" tabindex="0" aria-expanded="false">
       <div class="episode-header-right">
-        <span class="episode-icon">🎬</span>
+        <span class="episode-badge-pill">الحلقة ${epNum}</span>
         <span class="episode-title-text">${escapeHtml(epTitle)}</span>
       </div>
       <div class="episode-header-left">
         <span class="episode-badge-qualities">${escapeHtml(qBadgeText)}</span>
-        <span class="episode-toggle-icon">▼</span>
+        <button type="button" class="btn-episode-quick-watch" title="مشاهدة سريعة في Plyr">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          <span>مشاهدة</span>
+        </button>
+        <span class="episode-chevron-btn" aria-label="عرض الجودات">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </span>
       </div>
-    </button>
+    </div>
     <div class="episode-body"></div>
   `;
 
   const headerBtn = item.querySelector('.episode-header-btn');
   const body = item.querySelector('.episode-body');
+  const quickWatchBtn = item.querySelector('.btn-episode-quick-watch');
 
   body.appendChild(
     renderQualitiesList(qualities, `${seriesTitle} — ${epTitle}`, seriesPoster),
   );
 
-  headerBtn.addEventListener('click', () => {
+  function toggle() {
     const isOpen = item.classList.toggle('is-open');
     headerBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  }
+
+  headerBtn.addEventListener('click', (e) => {
+    if (e.target.closest('.btn-episode-quick-watch')) return;
+    toggle();
   });
+
+  headerBtn.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      toggle();
+    }
+  });
+
+  if (quickWatchBtn) {
+    if (!qualities.length) {
+      quickWatchBtn.style.display = 'none';
+    } else {
+      quickWatchBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openWatchPage({
+          title: `${seriesTitle} — ${epTitle}`,
+          subtitle: qualities[0].label + (qualities[0].size ? ` — ${qualities[0].size}` : ''),
+          poster: seriesPoster,
+          sources: qualities,
+          startQuality: qualities[0].label,
+        });
+      });
+    }
+  }
 
   return item;
 }
@@ -794,10 +887,10 @@ function renderEpisodeAccordion(ep, seriesPoster, seriesTitle, index) {
 function renderQualitiesList(qualities, title, poster) {
   const wrap = document.createElement('div');
   wrap.className = 'qualities';
-  wrap.innerHTML = '<h4>الجودات المتاحة</h4>';
+  wrap.innerHTML = '<div class="qualities-title">اختر جودة المشاهدة أو التحميل:</div>';
 
   if (!qualities.length) {
-    wrap.innerHTML += '<p class="hint">لا توجد روابط بعد</p>';
+    wrap.innerHTML += '<p class="hint">لا توجد روابط تحميل أو مشاهدة متاحة حالياً.</p>';
     return wrap;
   }
 
@@ -808,15 +901,28 @@ function renderQualitiesList(qualities, title, poster) {
     const row = document.createElement('div');
     row.className = 'quality-row';
     row.innerHTML = `
-      <div>
-        <div class="quality-label">${escapeHtml(q.label)}</div>
-        ${q.size ? `<div class="quality-size">${escapeHtml(q.size)}</div>` : ''}
+      <div class="quality-info-col">
+        <span class="quality-name-badge">${escapeHtml(q.label)}</span>
+        ${q.size ? `<span class="quality-size-badge">${escapeHtml(q.size)}</span>` : ''}
       </div>
-      <div class="quality-actions">
-        <button type="button" class="btn-watch" data-action="watch">▶ مشاهدة</button>
-        <a class="quality-download" href="${escapeAttr(q.url)}" target="_blank" rel="noopener noreferrer" download>تحميل</a>
+      <div class="quality-actions-col">
+        <button type="button" class="btn-watch-stream" data-action="watch">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          <span>مشاهدة عبر Plyr</span>
+        </button>
+        <a class="btn-download-direct" href="${escapeAttr(q.url)}" target="_blank" rel="noopener noreferrer" download>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          <span>تحميل مباشر</span>
+        </a>
       </div>
     `;
+
     row.querySelector('[data-action="watch"]').addEventListener('click', () => {
       openWatchPage({
         title,
@@ -826,6 +932,7 @@ function renderQualitiesList(qualities, title, poster) {
         startQuality: q.label,
       });
     });
+
     list.appendChild(row);
   }
 

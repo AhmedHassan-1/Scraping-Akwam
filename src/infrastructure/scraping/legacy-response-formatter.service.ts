@@ -24,6 +24,7 @@ export class LegacyResponseFormatter {
       m.qualities.forEach((q) => {
         legacyMovie[q.quality] = q.downloadUrl;
         legacyMovie[`${q.quality}_`] = q.size;
+        legacyMovie[`${q.quality}_watch`] = q.watchUrl || q.downloadUrl;
       });
       allFilms.push(legacyMovie);
     });
@@ -46,11 +47,13 @@ export class LegacyResponseFormatter {
         ep.qualities.forEach((q) => {
           legacyEp[q.quality] = q.downloadUrl;
           legacyEp[`${q.quality}_`] = q.size;
+          legacyEp[`${q.quality}_watch`] = q.watchUrl || q.downloadUrl;
         });
         return legacyEp;
       });
 
       legacySeries[s.title] = episodesList;
+      legacySeries.episodes = episodesList;
       allSeries.push(legacySeries);
     });
 
