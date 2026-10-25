@@ -6,6 +6,7 @@ import { SearchCandidate } from '../../core/domain/entities/search-candidate.ent
 import {
   ItemCompleteCallback,
   ProgressCallback,
+  EpisodeCompleteCallback,
 } from '../../core/interfaces/scraper.interface';
 import { AkwamHttpClient } from './akwam-http-client.service';
 import { AkwamDownloadResolverService } from './akwam-download-resolver.service';
@@ -26,6 +27,7 @@ export class AkwamMediaService {
     signal?: AbortSignal,
     onProgress?: ProgressCallback,
     onItemComplete?: ItemCompleteCallback,
+    onEpisodeComplete?: EpisodeCompleteCallback,
   ): Promise<{ movies: Movie[]; series: Series[] }> {
     const movies: Movie[] = [];
     const series: Series[] = [];
@@ -56,13 +58,20 @@ export class AkwamMediaService {
             completedItems: movies.length + series.length,
           });
         },
+        onEpisodeComplete,
       );
 
       if (!parsed) continue;
 
       if (parsed.isSeries && parsed.series) {
-        series.push(parsed.series);
-        onItemComplete?.(parsed.series, 'series');
+        // Only push if not already added by live episode updates
+        const existingIdx = series.findIndex((s) => s.title === parsed.series!.title);
+        if (existingIdx >= 0) {
+          series[existingIdx] = parsed.series;
+        } else {
+          series.push(parsed.series);
+        }
+        await onItemComplete?.(parsed.series, 'series');
         onProgress?.({
           phase: 'item_done',
           message: `اكتمل المسلسل: ${candidate.title}`,
@@ -72,7 +81,7 @@ export class AkwamMediaService {
         });
       } else if (parsed.movie) {
         movies.push(parsed.movie);
-        onItemComplete?.(parsed.movie, 'movie');
+        await onItemComplete?.(parsed.movie, 'movie');
         onProgress?.({
           phase: 'item_done',
           message: `اكتمل الفيلم: ${candidate.title}`,
@@ -91,6 +100,7 @@ export class AkwamMediaService {
     fallbackTitle: string,
     signal?: AbortSignal,
     onDetailProgress?: (message: string) => void,
+    onEpisodeComplete?: EpisodeCompleteCallback,
   ): Promise<{ isSeries: boolean; movie?: Movie; series?: Series } | null> {
     const itemRes = await this.httpClient.get(link, { signal });
     const parsedDetails = MediaDetailsParser.parse(
@@ -104,6 +114,7 @@ export class AkwamMediaService {
         parsedDetails.episodeUrls,
         signal,
         onDetailProgress,
+        onEpisodeComplete,
       );
     }
 
@@ -123,6 +134,7 @@ export class AkwamMediaService {
     episodeUrls: string[],
     signal?: AbortSignal,
     onDetailProgress?: (message: string) => void,
+    onEpisodeComplete?: EpisodeCompleteCallback,
   ): Promise<{ isSeries: boolean; series: Series }> {
     const epResults: (Episode | null)[] = [];
     const epTotal = episodeUrls.length;
@@ -146,10 +158,22 @@ export class AkwamMediaService {
         },
       );
 
-      epResults.push({
+      const ep: Episode = {
         title: epTitle,
         qualities: resolvedQualities,
-      } as Episode);
+      };
+
+      epResults.push(ep);
+      series.episodes = epResults.filter(Boolean) as Episode[];
+
+      // Real-time live streaming of each resolved episode!
+      if (onEpisodeComplete) {
+        try {
+          await onEpisodeComplete(series, ep);
+        } catch (err) {
+          this.logger.warn(`Failed in onEpisodeComplete callback: ${err}`);
+        }
+      }
     }
 
     series.episodes = epResults.filter(Boolean) as Episode[];

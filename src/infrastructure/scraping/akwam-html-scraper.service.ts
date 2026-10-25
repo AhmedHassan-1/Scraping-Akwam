@@ -6,6 +6,7 @@ import {
   IScraperService,
   ItemCompleteCallback,
   ProgressCallback,
+  EpisodeCompleteCallback,
 } from '../../core/interfaces/scraper.interface';
 import { AkwamSearchService } from './akwam-search.service';
 import { AkwamMediaService } from './akwam-media.service';
@@ -34,12 +35,14 @@ export class AkwamHtmlScraperService implements IScraperService {
     signal?: AbortSignal,
     onProgress?: ProgressCallback,
     onItemComplete?: ItemCompleteCallback,
+    onEpisodeComplete?: EpisodeCompleteCallback,
   ): Promise<{ movies: Movie[]; series: Series[] }> {
     return this.mediaService.processCandidates(
       candidates,
       signal,
       onProgress,
       onItemComplete,
+      onEpisodeComplete,
     );
   }
 

@@ -128,9 +128,15 @@ export class AkwamJobProcessor implements OnModuleInit, OnModuleDestroy {
         },
         async (item, kind) => {
           if (kind === 'movie') {
-            job.movies.push(item as Movie);
+            const exists = job.movies.some((m) => m.title === item.title);
+            if (!exists) job.movies.push(item as Movie);
           } else {
-            job.series.push(item as Series);
+            const sIdx = job.series.findIndex((s) => s.title === item.title);
+            if (sIdx >= 0) {
+              job.series[sIdx] = item as Series;
+            } else {
+              job.series.push(item as Series);
+            }
           }
           job.results = this.scraperService.buildLegacyResponse(job.movies, job.series);
           job.progress.completedItems = job.movies.length + job.series.length;
@@ -142,6 +148,26 @@ export class AkwamJobProcessor implements OnModuleInit, OnModuleDestroy {
               results: job.results,
               kind,
               title: item.title,
+            },
+          });
+        },
+        async (seriesItem, episode) => {
+          // Real-time live streaming of each episode!
+          const sIdx = job.series.findIndex((s) => s.title === seriesItem.title);
+          if (sIdx >= 0) {
+            job.series[sIdx] = seriesItem;
+          } else {
+            job.series.push(seriesItem);
+          }
+          job.results = this.scraperService.buildLegacyResponse(job.movies, job.series);
+          await this.jobRepository.save(job);
+          await this.jobRepository.publishEvent(jobId, {
+            type: 'item',
+            data: {
+              results: job.results,
+              kind: 'episode',
+              title: `${seriesItem.title} — ${episode.title}`,
+              seriesTitle: seriesItem.title,
             },
           });
         },

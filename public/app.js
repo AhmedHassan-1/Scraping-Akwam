@@ -546,6 +546,8 @@ function updateProgressUI({ status, message, current, total, completedItems }) {
   }
 }
 
+let currentCapsuleFilter = 'all';
+
 function renderResults(data) {
   if (!Array.isArray(data) || !data.length) {
     resultsContainer.innerHTML = '';
@@ -562,6 +564,13 @@ function renderResults(data) {
     return;
   }
 
+  // Preserve open accordion episode keys so real-time stream updates don't close open episodes
+  const previouslyOpenKeys = new Set(
+    [...document.querySelectorAll('.episode-accordion-item.is-open')]
+      .map((el) => el.dataset.epKey)
+      .filter(Boolean),
+  );
+
   // Persist results and search query in sessionStorage for instant restoration on Back navigation
   try {
     sessionStorage.setItem('akwam_last_results', JSON.stringify(data));
@@ -573,7 +582,9 @@ function renderResults(data) {
     }
   } catch (_) {}
 
-  resultsContainer.innerHTML = '';
+  // Segregate into movies and series
+  const allMovies = [];
+  const allSeries = [];
 
   for (const group of data) {
     if (!Array.isArray(group) || group.length < 2) continue;
@@ -582,15 +593,115 @@ function renderResults(data) {
     if (!items.length) continue;
 
     const isSeriesGroup = groupType === 'Series' || groupType === 'series';
-    const section = document.createElement('div');
-    section.className = 'result-group';
-    section.innerHTML = `<h3>${isSeriesGroup ? '📺 مسلسلات' : '🎬 أفلام'}</h3>`;
 
     for (const item of items) {
-      section.appendChild(renderItemCard(item, isSeriesGroup));
-    }
+      const hasEpisodes = Boolean(
+        item.episodes ||
+        item.Episodes ||
+        (item.Title && Array.isArray(item[item.Title])) ||
+        Object.keys(item).some(
+          (k) => !META_KEYS.has(k) && Array.isArray(item[k]) && item[k].length > 0,
+        ),
+      );
 
-    resultsContainer.appendChild(section);
+      if (isSeriesGroup || hasEpisodes) {
+        allSeries.push(item);
+      } else {
+        allMovies.push(item);
+      }
+    }
+  }
+
+  resultsContainer.innerHTML = '';
+
+  // 1. Render Top Capsule Navigation Tabs if both movies and series exist
+  if (allMovies.length > 0 && allSeries.length > 0) {
+    const navBar = document.createElement('div');
+    navBar.className = 'results-capsule-tabs';
+    navBar.innerHTML = `
+      <button type="button" class="capsule-tab-btn ${currentCapsuleFilter === 'all' ? 'active' : ''}" data-filter="all">
+        <span class="tab-icon">⚡</span>
+        <span class="tab-label">عرض الكل</span>
+        <span class="tab-badge">${allMovies.length + allSeries.length}</span>
+      </button>
+      <button type="button" class="capsule-tab-btn ${currentCapsuleFilter === 'movies' ? 'active' : ''}" data-filter="movies">
+        <span class="tab-icon">🎬</span>
+        <span class="tab-label">الأفلام</span>
+        <span class="tab-badge">${allMovies.length}</span>
+      </button>
+      <button type="button" class="capsule-tab-btn ${currentCapsuleFilter === 'series' ? 'active' : ''}" data-filter="series">
+        <span class="tab-icon">📺</span>
+        <span class="tab-label">المسلسلات</span>
+        <span class="tab-badge">${allSeries.length}</span>
+      </button>
+    `;
+
+    navBar.querySelectorAll('.capsule-tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        currentCapsuleFilter = btn.dataset.filter;
+        navBar.querySelectorAll('.capsule-tab-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        applyCapsuleFilter(currentCapsuleFilter);
+      });
+    });
+
+    resultsContainer.appendChild(navBar);
+  }
+
+  // 2. Movies Capsule Container
+  if (allMovies.length > 0) {
+    const moviesSection = document.createElement('div');
+    moviesSection.className = 'capsule-group capsule-movies';
+    moviesSection.innerHTML = `
+      <div class="capsule-group-header">
+        <div class="capsule-title-pill">
+          <span class="pill-icon">🎬</span>
+          <h3>كبسولة الأفلام</h3>
+        </div>
+        <span class="capsule-count-tag">${allMovies.length} فيلم</span>
+      </div>
+      <div class="movies-capsule-grid"></div>
+    `;
+    const grid = moviesSection.querySelector('.movies-capsule-grid');
+    for (const movie of allMovies) {
+      grid.appendChild(renderItemCard(movie, false, previouslyOpenKeys));
+    }
+    resultsContainer.appendChild(moviesSection);
+  }
+
+  // 3. Series Capsule Container
+  if (allSeries.length > 0) {
+    const seriesSection = document.createElement('div');
+    seriesSection.className = 'capsule-group capsule-series';
+    seriesSection.innerHTML = `
+      <div class="capsule-group-header">
+        <div class="capsule-title-pill">
+          <span class="pill-icon">📺</span>
+          <h3>كبسولة المسلسلات</h3>
+        </div>
+        <span class="capsule-count-tag">${allSeries.length} مسلسل</span>
+      </div>
+      <div class="series-capsule-list"></div>
+    `;
+    const list = seriesSection.querySelector('.series-capsule-list');
+    for (const s of allSeries) {
+      list.appendChild(renderItemCard(s, true, previouslyOpenKeys));
+    }
+    resultsContainer.appendChild(seriesSection);
+  }
+
+  applyCapsuleFilter(currentCapsuleFilter);
+}
+
+function applyCapsuleFilter(filter) {
+  const moviesGroup = resultsContainer.querySelector('.capsule-movies');
+  const seriesGroup = resultsContainer.querySelector('.capsule-series');
+
+  if (moviesGroup) {
+    moviesGroup.style.display = (filter === 'all' || filter === 'movies') ? 'block' : 'none';
+  }
+  if (seriesGroup) {
+    seriesGroup.style.display = (filter === 'all' || filter === 'series') ? 'block' : 'none';
   }
 }
 
@@ -625,18 +736,19 @@ function cleanEpisodeTitle(rawTitle, index) {
 
 function openWatchPage(payload) {
   try {
-    // Preserve current scroll position before navigating
     sessionStorage.setItem('akwam_scroll_pos', window.scrollY.toString());
     sessionStorage.setItem('akwamWatch', JSON.stringify(payload));
+    if (currentJobId) {
+      sessionStorage.setItem('akwam_last_job_id', currentJobId);
+    }
     window.location.href = '/watch.html';
   } catch {
     void showError('تعذر الفتح', 'لا يمكن فتح صفحة المشاهدة');
   }
 }
 
-function renderItemCard(item, isSeriesHint) {
+function renderItemCard(item, isSeriesHint, previouslyOpenKeys) {
   const card = document.createElement('article');
-  card.className = 'result-card';
 
   // Comprehensive episode discovery
   let episodes = null;
@@ -668,6 +780,7 @@ function renderItemCard(item, isSeriesHint) {
   }
 
   const isSeries = Boolean(isSeriesHint || (episodes && episodes.length > 0));
+  card.className = isSeries ? 'result-card series-capsule-card' : 'result-card movie-card';
 
   const posterDirect = item.Image?.trim() || '';
   const posterProxied = posterDirect ? proxyImageUrl(posterDirect) : '';
@@ -696,12 +809,13 @@ function renderItemCard(item, isSeriesHint) {
     <div class="result-hero">
       <div class="result-poster-wrap">${posterHtml}</div>
       <div class="result-body">
+        ${isSeries ? '<div class="series-pill-badge">📺 كبسولة المسلسل</div>' : ''}
         <h3>${escapeHtml(item.Title || '')}</h3>
         <div class="result-meta">${chips}</div>
         ${
           allQualities.length
             ? `<div class="result-actions-top">
-            <button type="button" class="btn-watch watch-all-btn">▶ مشاهدة (أعلى جودة)</button>
+            <button type="button" class="btn-watch watch-all-btn">▶ مشاهدة الفيلم (أعلى جودة)</button>
           </div>`
             : ''
         }
@@ -742,7 +856,7 @@ function renderItemCard(item, isSeriesHint) {
     const headerRow = document.createElement('div');
     headerRow.className = 'episodes-header-row';
     headerRow.innerHTML = `
-      <h4>📺 قائمة الحلقات المتاحة (${sortedEpisodes.length} حلقة)</h4>
+      <h4>📺 حلقات المسلسل (${sortedEpisodes.length} حلقة متوفرة)</h4>
       <div class="episodes-actions">
         <button type="button" class="btn-toggle-all" data-action="expand-all">توسيع الكل</button>
         <button type="button" class="btn-toggle-all" data-action="collapse-all">طي الكل</button>
@@ -755,7 +869,7 @@ function renderItemCard(item, isSeriesHint) {
 
     sortedEpisodes.forEach((ep, idx) => {
       accordionList.appendChild(
-        renderEpisodeAccordion(ep, item.Image, item.Title, idx),
+        renderEpisodeAccordion(ep, item.Image, item.Title, idx, previouslyOpenKeys),
       );
     });
 
@@ -791,7 +905,7 @@ function renderItemCard(item, isSeriesHint) {
       });
 
     content.appendChild(epContainer);
-  } else {
+  } else if (!isSeries) {
     content.appendChild(
       renderQualitiesList(allQualities, item.Title, item.Image),
     );
@@ -805,7 +919,7 @@ function renderItemCard(item, isSeriesHint) {
  * Clicking the rectangle or arrow toggles it open/closed.
  * Each quality row enables direct streaming in Plyr.io or direct downloading.
  */
-function renderEpisodeAccordion(ep, seriesPoster, seriesTitle, index) {
+function renderEpisodeAccordion(ep, seriesPoster, seriesTitle, index, previouslyOpenKeys) {
   const item = document.createElement('div');
   item.className = 'episode-accordion-item';
   const qualities = extractQualities(ep);
@@ -814,9 +928,16 @@ function renderEpisodeAccordion(ep, seriesPoster, seriesTitle, index) {
 
   const epNum = extractEpisodeNumber(ep, index);
   const epTitle = cleanEpisodeTitle(ep.Title, index);
+  const epKey = `${seriesTitle}_${epNum}`;
+  item.dataset.epKey = epKey;
+
+  // Restore open state if previously open during live SSE stream updates!
+  if (previouslyOpenKeys && previouslyOpenKeys.has(epKey)) {
+    item.classList.add('is-open');
+  }
 
   item.innerHTML = `
-    <div class="episode-header-btn" role="button" tabindex="0" aria-expanded="false">
+    <div class="episode-header-btn" role="button" tabindex="0" aria-expanded="${item.classList.contains('is-open') ? 'true' : 'false'}">
       <div class="episode-header-right">
         <span class="episode-badge-pill">الحلقة ${epNum}</span>
         <span class="episode-title-text">${escapeHtml(epTitle)}</span>
@@ -974,6 +1095,26 @@ function escapeAttr(str) {
 }
 
 /**
+ * Checks if a saved job is still running in background and resumes live streaming
+ */
+async function resumeActiveJob(jobId) {
+  if (!jobId) return;
+  try {
+    const res = await fetch(`/akwam/jobs/${jobId}`);
+    if (!res.ok) return;
+    const snap = await res.json();
+    if (['queued', 'discovering', 'processing', 'awaiting_selection'].includes(snap.status)) {
+      setBusy(true);
+      progressSection.classList.remove('hidden');
+      applySnapshot(snap);
+      attachEventStream(jobId);
+    } else if (snap.status === 'completed' && snap.results?.length) {
+      renderResults(snap.results);
+    }
+  } catch (_) {}
+}
+
+/**
  * Restores previous search state and results on page reload or back navigation.
  */
 function restoreSearchState() {
@@ -992,16 +1133,20 @@ function restoreSearchState() {
       if (Array.isArray(parsed) && parsed.length > 0) {
         resultsSection.classList.remove('hidden');
         renderResults(parsed);
-        if (savedJobId) currentJobId = savedJobId;
-
-        // Restore scroll position smoothly
-        if (scrollPos) {
-          setTimeout(() => {
-            window.scrollTo({ top: Number(scrollPos), behavior: 'smooth' });
-            sessionStorage.removeItem('akwam_scroll_pos');
-          }, 150);
-        }
       }
+    }
+
+    if (savedJobId) {
+      currentJobId = savedJobId;
+      // Reconnect and resume streaming if the job is still active!
+      void resumeActiveJob(savedJobId);
+    }
+
+    if (scrollPos) {
+      setTimeout(() => {
+        window.scrollTo({ top: Number(scrollPos), behavior: 'smooth' });
+        sessionStorage.removeItem('akwam_scroll_pos');
+      }, 150);
     }
   } catch (err) {
     console.error('Failed to restore search state:', err);

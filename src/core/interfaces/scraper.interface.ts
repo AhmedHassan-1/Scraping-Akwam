@@ -1,10 +1,12 @@
 import { Movie } from '../domain/entities/movie.entity';
 import { Series } from '../domain/entities/series.entity';
+import { Episode } from '../domain/entities/episode.entity';
 import { SearchCandidate } from '../domain/entities/search-candidate.entity';
 import { ProgressState } from '../domain/entities/job.entity';
 
 export type ProgressCallback = (progress: Partial<ProgressState>) => void;
 export type ItemCompleteCallback = (item: Movie | Series, kind: 'movie' | 'series') => void;
+export type EpisodeCompleteCallback = (series: Series, episode: Episode) => Promise<void> | void;
 
 export interface IScraperService {
   discoverCandidates(
@@ -18,6 +20,7 @@ export interface IScraperService {
     signal?: AbortSignal,
     onProgress?: ProgressCallback,
     onItemComplete?: ItemCompleteCallback,
+    onEpisodeComplete?: EpisodeCompleteCallback,
   ): Promise<{ movies: Movie[]; series: Series[] }>;
 
   fetchProxiedImage(url: string): Promise<{ buffer: Buffer; contentType: string }>;

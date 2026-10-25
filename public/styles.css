@@ -618,6 +618,152 @@ button:disabled {
   gap: 0.6rem;
 }
 
+/* ─── Results Capsule Navigation Tabs ──────────────────────────────────── */
+
+.results-capsule-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 2rem;
+  padding: 0.45rem;
+  background: rgba(13, 18, 28, 0.75);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  width: fit-content;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+.capsule-tab-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+  padding: 0.55rem 1.35rem;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.capsule-tab-btn .tab-badge {
+  font-size: 0.78rem;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  transition: all 0.2s;
+}
+
+.capsule-tab-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.capsule-tab-btn.active {
+  background: var(--accent-gradient);
+  color: #ffffff;
+  box-shadow: 0 4px 18px rgba(99, 102, 241, 0.4);
+}
+
+.capsule-tab-btn.active .tab-badge {
+  background: rgba(0, 0, 0, 0.25);
+  color: #ffffff;
+}
+
+/* ─── Capsule Outer Groups ──────────────────────────────────────────────── */
+
+.capsule-group {
+  margin-bottom: 2.75rem;
+}
+
+.capsule-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.capsule-title-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.capsule-title-pill .pill-icon {
+  font-size: 1.35rem;
+}
+
+.capsule-title-pill h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.capsule-count-tag {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  padding: 0.25rem 0.8rem;
+  border-radius: 999px;
+}
+
+.movies-capsule-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.series-capsule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+/* Series Capsule Card Styling */
+.series-capsule-card {
+  border: 1px solid rgba(99, 102, 241, 0.25) !important;
+  background: linear-gradient(180deg, rgba(18, 25, 38, 0.85) 0%, rgba(10, 14, 22, 0.85) 100%) !important;
+  border-radius: var(--radius-xl) !important;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 12px 36px -10px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(99, 102, 241, 0.15);
+}
+
+.series-capsule-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 3px;
+  background: var(--accent-gradient);
+  opacity: 0.85;
+}
+
+.series-pill-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  align-self: flex-start;
+  padding: 0.2rem 0.65rem;
+  border-radius: 6px;
+  background: rgba(168, 85, 247, 0.15);
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  color: #c084fc;
+  font-size: 0.76rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
 .result-card {
   background: var(--surface);
   border: 1px solid var(--border);
