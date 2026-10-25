@@ -10,7 +10,8 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
+    <link rel="stylesheet" href="/vendor/plyr/plyr.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/plyr@3.7.8/dist/plyr.css" />
     <link rel="stylesheet" href="/styles.css" />
     <link rel="stylesheet" href="/watch.css" />
     <link
@@ -104,7 +105,12 @@
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
+    <script src="/vendor/plyr/plyr.polyfilled.js"></script>
+    <script>
+      if (typeof Plyr === 'undefined') {
+        document.write('<script src="https://cdn.jsdelivr.net/npm/plyr@3.7.8/dist/plyr.polyfilled.min.js"><\\/script>');
+      }
+    </script>
     <script src="/watch.js"></script>
   </body>
 </html>

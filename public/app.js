@@ -564,12 +564,19 @@ function renderResults(data) {
     return;
   }
 
-  // Preserve open accordion episode keys so real-time stream updates don't close open episodes
+  // Preserve open states across real-time SSE stream updates
   const previouslyOpenKeys = new Set(
     [...document.querySelectorAll('.episode-accordion-item.is-open')]
       .map((el) => el.dataset.epKey)
       .filter(Boolean),
   );
+  const previouslyClosedSeries = new Set(
+    [...document.querySelectorAll('.series-capsule-card:not(.is-open)')]
+      .map((el) => el.dataset.seriesKey)
+      .filter(Boolean),
+  );
+  const moviesGroupWasClosed = Boolean(document.querySelector('.capsule-movies:not(.is-open)'));
+  const seriesGroupWasClosed = Boolean(document.querySelector('.capsule-series:not(.is-open)'));
 
   // Persist results and search query in sessionStorage for instant restoration on Back navigation
   try {
@@ -648,44 +655,88 @@ function renderResults(data) {
     resultsContainer.appendChild(navBar);
   }
 
-  // 2. Movies Capsule Container
+  // 2. Movies Capsule Container (Collapsible)
   if (allMovies.length > 0) {
     const moviesSection = document.createElement('div');
-    moviesSection.className = 'capsule-group capsule-movies';
+    const isMoviesOpen = !moviesGroupWasClosed;
+    moviesSection.className = `capsule-group capsule-movies ${isMoviesOpen ? 'is-open' : ''}`;
     moviesSection.innerHTML = `
-      <div class="capsule-group-header">
+      <div class="capsule-group-header" role="button" tabindex="0" aria-expanded="${isMoviesOpen}">
         <div class="capsule-title-pill">
           <span class="pill-icon">🎬</span>
           <h3>كبسولة الأفلام</h3>
         </div>
-        <span class="capsule-count-tag">${allMovies.length} فيلم</span>
+        <div class="capsule-header-meta">
+          <span class="capsule-count-tag">${allMovies.length} فيلم</span>
+          <span class="capsule-group-toggle-arrow" aria-label="تبديل عرض كبسولة الأفلام">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </span>
+        </div>
       </div>
       <div class="movies-capsule-grid"></div>
     `;
+
+    const mHeader = moviesSection.querySelector('.capsule-group-header');
+    function toggleMovies() {
+      const open = moviesSection.classList.toggle('is-open');
+      mHeader.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    mHeader.addEventListener('click', toggleMovies);
+    mHeader.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggleMovies();
+      }
+    });
+
     const grid = moviesSection.querySelector('.movies-capsule-grid');
     for (const movie of allMovies) {
-      grid.appendChild(renderItemCard(movie, false, previouslyOpenKeys));
+      grid.appendChild(renderItemCard(movie, false, previouslyOpenKeys, previouslyClosedSeries));
     }
     resultsContainer.appendChild(moviesSection);
   }
 
-  // 3. Series Capsule Container
+  // 3. Series Capsule Container (Collapsible)
   if (allSeries.length > 0) {
     const seriesSection = document.createElement('div');
-    seriesSection.className = 'capsule-group capsule-series';
+    const isSeriesOpen = !seriesGroupWasClosed;
+    seriesSection.className = `capsule-group capsule-series ${isSeriesOpen ? 'is-open' : ''}`;
     seriesSection.innerHTML = `
-      <div class="capsule-group-header">
+      <div class="capsule-group-header" role="button" tabindex="0" aria-expanded="${isSeriesOpen}">
         <div class="capsule-title-pill">
           <span class="pill-icon">📺</span>
           <h3>كبسولة المسلسلات</h3>
         </div>
-        <span class="capsule-count-tag">${allSeries.length} مسلسل</span>
+        <div class="capsule-header-meta">
+          <span class="capsule-count-tag">${allSeries.length} مسلسل</span>
+          <span class="capsule-group-toggle-arrow" aria-label="تبديل عرض كبسولة المسلسلات">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </span>
+        </div>
       </div>
       <div class="series-capsule-list"></div>
     `;
+
+    const sHeader = seriesSection.querySelector('.capsule-group-header');
+    function toggleSeriesGroup() {
+      const open = seriesSection.classList.toggle('is-open');
+      sHeader.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    sHeader.addEventListener('click', toggleSeriesGroup);
+    sHeader.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggleSeriesGroup();
+      }
+    });
+
     const list = seriesSection.querySelector('.series-capsule-list');
     for (const s of allSeries) {
-      list.appendChild(renderItemCard(s, true, previouslyOpenKeys));
+      list.appendChild(renderItemCard(s, true, previouslyOpenKeys, previouslyClosedSeries));
     }
     resultsContainer.appendChild(seriesSection);
   }
@@ -710,7 +761,11 @@ function extractQualities(obj) {
   return Object.keys(obj)
     .filter(
       (k) =>
-        !META_KEYS.has(k) && !k.endsWith('_') && typeof obj[k] === 'string',
+        !META_KEYS.has(k) &&
+        !k.endsWith('_') &&
+        !k.endsWith('_watch') &&
+        !k.endsWith('_url') &&
+        typeof obj[k] === 'string',
     )
     .map((label) => ({
       label,
@@ -747,7 +802,7 @@ function openWatchPage(payload) {
   }
 }
 
-function renderItemCard(item, isSeriesHint, previouslyOpenKeys) {
+function renderItemCard(item, isSeriesHint, previouslyOpenKeys, previouslyClosedSeries) {
   const card = document.createElement('article');
 
   // Comprehensive episode discovery
@@ -780,7 +835,15 @@ function renderItemCard(item, isSeriesHint, previouslyOpenKeys) {
   }
 
   const isSeries = Boolean(isSeriesHint || (episodes && episodes.length > 0));
-  card.className = isSeries ? 'result-card series-capsule-card' : 'result-card movie-card';
+  const seriesKey = String(item.Title || '').trim();
+  card.dataset.seriesKey = seriesKey;
+
+  // By default, series capsule is open unless explicitly closed previously
+  const isSeriesOpen = !previouslyClosedSeries || !previouslyClosedSeries.has(seriesKey);
+
+  card.className = isSeries
+    ? `result-card series-capsule-card ${isSeriesOpen ? 'is-open' : ''}`
+    : 'result-card movie-card';
 
   const posterDirect = item.Image?.trim() || '';
   const posterProxied = posterDirect ? proxyImageUrl(posterDirect) : '';
@@ -804,12 +867,27 @@ function renderItemCard(item, isSeriesHint, previouslyOpenKeys) {
     .join('');
 
   const allQualities = isSeries ? [] : extractQualities(item);
+  const epCount = Array.isArray(episodes) ? episodes.length : 0;
 
   card.innerHTML = `
-    <div class="result-hero">
+    <div class="result-hero ${isSeries ? 'series-capsule-hero' : ''}" ${isSeries ? `role="button" tabindex="0" aria-expanded="${isSeriesOpen}"` : ''}>
       <div class="result-poster-wrap">${posterHtml}</div>
       <div class="result-body">
-        ${isSeries ? '<div class="series-pill-badge">📺 كبسولة المسلسل</div>' : ''}
+        ${
+          isSeries
+            ? `<div class="series-capsule-top-bar">
+                 <div class="series-pill-badge">📺 كبسولة المسلسل</div>
+                 <div class="series-capsule-controls">
+                   <span class="series-ep-badge">${epCount} حلقة متوفرة</span>
+                   <span class="series-toggle-arrow" aria-label="عرض/إخفاء الحلقات">
+                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                       <polyline points="6 9 12 15 18 9"></polyline>
+                     </svg>
+                   </span>
+                 </div>
+               </div>`
+            : ''
+        }
         <h3>${escapeHtml(item.Title || '')}</h3>
         <div class="result-meta">${chips}</div>
         ${
@@ -827,6 +905,25 @@ function renderItemCard(item, isSeriesHint, previouslyOpenKeys) {
   const content = card.querySelector('.result-content');
   const posterImg = card.querySelector('.result-poster');
   if (posterImg?.tagName === 'IMG') attachThumbFallback(posterImg);
+
+  // If this is a series, clicking the series hero header toggles the series capsule open/close!
+  if (isSeries) {
+    const seriesHero = card.querySelector('.series-capsule-hero');
+    function toggleSeriesCard() {
+      const open = card.classList.toggle('is-open');
+      seriesHero?.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    seriesHero?.addEventListener('click', (e) => {
+      if (e.target.closest('a') || e.target.closest('button')) return;
+      toggleSeriesCard();
+    });
+    seriesHero?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggleSeriesCard();
+      }
+    });
+  }
 
   const watchAllBtn = card.querySelector('.watch-all-btn');
   if (watchAllBtn && allQualities.length) {
@@ -1027,19 +1124,19 @@ function renderQualitiesList(qualities, title, poster) {
         ${q.size ? `<span class="quality-size-badge">${escapeHtml(q.size)}</span>` : ''}
       </div>
       <div class="quality-actions-col">
-        <button type="button" class="btn-watch-stream" data-action="watch">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+        <button type="button" class="btn-watch-stream" data-action="watch" title="مشاهدة مباشرة بجودة ${escapeAttr(q.label)}">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
             <polygon points="5 3 19 12 5 21 5 3"></polygon>
           </svg>
-          <span>مشاهدة عبر Plyr</span>
+          <span>مشاهدة</span>
         </button>
-        <a class="btn-download-direct" href="${escapeAttr(q.url)}" target="_blank" rel="noopener noreferrer" download>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <a class="btn-download-direct" href="${escapeAttr(q.url)}" target="_blank" rel="noopener noreferrer" download title="تحميل مباشر بجودة ${escapeAttr(q.label)}">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
             <polyline points="7 10 12 15 17 10"></polyline>
             <line x1="12" y1="15" x2="12" y2="3"></line>
           </svg>
-          <span>تحميل مباشر</span>
+          <span>تحميل</span>
         </a>
       </div>
     `;
@@ -1107,7 +1204,7 @@ async function resumeActiveJob(jobId) {
       setBusy(true);
       progressSection.classList.remove('hidden');
       applySnapshot(snap);
-      attachEventStream(jobId);
+      connectEvents(jobId);
     } else if (snap.status === 'completed' && snap.results?.length) {
       renderResults(snap.results);
     }

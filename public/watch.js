@@ -36,10 +36,12 @@ function isNonStreamable(url) {
 }
 
 function showHint(msg) {
+  if (!playerHint) return;
   playerHint.textContent = msg;
   playerHint.classList.remove("hidden");
 }
 function hideHint() {
+  if (!playerHint) return;
   playerHint.classList.add("hidden");
 }
 
@@ -67,7 +69,7 @@ function revokeAllBlobs() {
 
 /* ─────────────────────────────────────────────
    CORE SOURCE HANDLER
-   Plays the direct download MP4 URL in Plyr
+   Plays the direct download MP4 URL in Plyr / HTML5
    and assigns the exact same link to downloadBtn
 ───────────────────────────────────────────── */
 
@@ -76,9 +78,13 @@ async function applySource(index, preserveTime) {
   if (!src) return;
 
   currentIndex = index;
-  downloadBtn.href = src.url;
-  downloadBtn.download = "";
-  watchSubtitle.textContent = src.label + (src.size ? ` — ${src.size}` : "");
+  if (downloadBtn) {
+    downloadBtn.href = src.url;
+    downloadBtn.download = "";
+  }
+  if (watchSubtitle) {
+    watchSubtitle.textContent = src.label + (src.size ? ` — ${src.size}` : "");
+  }
 
   if (qualitySelect && qualitySelect.value != index) {
     qualitySelect.value = index;
@@ -91,21 +97,30 @@ async function applySource(index, preserveTime) {
 
   hideHint();
 
-  const media = player.media;
-  const savedTime = preserveTime ? media.currentTime : 0;
+  const media = player?.media || video;
+  if (!media) return;
+
+  const savedTime = preserveTime ? (media.currentTime || 0) : 0;
   const wasPlaying = preserveTime ? !media.paused : true;
 
   // ── reset ────────────────────────────────────────
-  media.pause();
+  try { media.pause(); } catch (_) {}
   media.removeAttribute("src");
   if (data?._poster) media.setAttribute("poster", data._poster);
-  media.load();
 
   // ── canplay ──────────────────────────────────────
   function onCanPlay() {
     errorCount = 0;
-    if (savedTime > 1) media.currentTime = savedTime;
-    if (wasPlaying) player.play().catch(() => {});
+    if (savedTime > 1) {
+      try { media.currentTime = savedTime; } catch (_) {}
+    }
+    if (wasPlaying) {
+      if (player && typeof player.play === "function") {
+        player.play().catch(() => media.play?.().catch(() => {}));
+      } else if (typeof media.play === "function") {
+        media.play().catch(() => {});
+      }
+    }
   }
 
   media.addEventListener("canplay", onCanPlay, { once: true });
@@ -133,9 +148,9 @@ async function applySource(index, preserveTime) {
   media.src = src.url;
   media.load();
 
-  // ── sync Plyr quality badge ───────────────────────
+  // ── sync Plyr quality badge if supported ──────────
   const sz = qualitySize(src.label);
-  if (sz) {
+  if (sz && player) {
     try {
       player.quality = sz;
     } catch {}
@@ -158,7 +173,7 @@ function handleError() {
 
   const next = (currentIndex + 1) % sources.length;
   showHint(
-    `فشل تحميل "${sources[currentIndex]?.label}" — جارٍ تجربة "${sources[next]?.label}"…`,
+    `فشل تشغيل "${sources[currentIndex]?.label}" — جارٍ تجربة "${sources[next]?.label}"…`,
   );
 
   retryTimer = setTimeout(() => {
@@ -172,8 +187,8 @@ function handleError() {
 ───────────────────────────────────────────── */
 
 function buildPlyr(startIndex) {
-  const sizes = sources.map((s) => qualitySize(s.label));
-  const unique = [...new Set(sizes)].filter(Boolean).sort((a, b) => b - a);
+  const sizes = sources.map((s) => qualitySize(s.label)).filter(Boolean);
+  const unique = [...new Set(sizes)].sort((a, b) => b - a);
   const multi = sources.length > 1 && unique.length > 1;
 
   const isIOS =
@@ -187,6 +202,8 @@ function buildPlyr(startIndex) {
 
   const opts = {
     ratio: "16:9",
+    loadSprite: true,
+    iconUrl: "/vendor/plyr/plyr.svg",
     fullscreen: {
       enabled: true,
       fallback: !nativeFS,
@@ -209,13 +226,13 @@ function buildPlyr(startIndex) {
     settings: multi ? ["quality", "speed"] : ["speed"],
   };
 
-  if (multi) {
+  if (multi && unique.length > 0) {
     opts.quality = {
-      default: sizes[startIndex] || unique[0],
+      default: unique.includes(sizes[startIndex]) ? sizes[startIndex] : unique[0],
       options: unique,
       forced: true,
       onChange(q) {
-        const idx = sizes.indexOf(q);
+        const idx = sources.findIndex((s) => qualitySize(s.label) === q);
         if (idx >= 0 && idx !== currentIndex) {
           errorCount = 0;
           clearTimeout(retryTimer);
@@ -225,13 +242,22 @@ function buildPlyr(startIndex) {
     };
   }
 
-  player = new Plyr(video, opts);
-  player.on("error", handleError);
+  try {
+    if (typeof Plyr !== "undefined") {
+      player = new Plyr(video, opts);
+      player.on("error", handleError);
 
-  if (data?._poster) {
-    player.on("ready", () => {
-      player.media.setAttribute("poster", data._poster);
-    });
+      if (data?._poster) {
+        player.on("ready", () => {
+          player.media?.setAttribute("poster", data._poster);
+        });
+      }
+    } else {
+      player = { media: video, play: () => video.play() };
+    }
+  } catch (err) {
+    console.warn("Plyr initialization fallback to HTML5 video element:", err);
+    player = { media: video, play: () => video.play() };
   }
 
   applySource(startIndex, false);
@@ -267,15 +293,17 @@ function loadWatchData() {
     return;
   }
 
-  watchTitle.textContent = data.title || "مشاهدة الحلقة";
-  watchSubtitle.textContent = data.subtitle || "";
+  if (watchTitle) watchTitle.textContent = data.title || "مشاهدة الحلقة";
+  if (watchSubtitle) watchSubtitle.textContent = data.subtitle || "";
 
   if (data.poster) {
     const proxyUrl = `/akwam/proxy-image?url=${encodeURIComponent(data.poster)}`;
     data._poster = proxyUrl;
-    watchPoster.src = proxyUrl;
-    watchPoster.classList.remove("hidden");
-    video.setAttribute("poster", proxyUrl);
+    if (watchPoster) {
+      watchPoster.src = proxyUrl;
+      watchPoster.classList.remove("hidden");
+    }
+    if (video) video.setAttribute("poster", proxyUrl);
   }
 
   let startIndex = 0;
@@ -294,7 +322,7 @@ function loadWatchData() {
       qualitySelect.appendChild(opt);
     });
     qualitySelect.value = startIndex;
-    qualitySection.classList.remove("hidden");
+    if (qualitySection) qualitySection.classList.remove("hidden");
 
     qualitySelect.addEventListener("change", () => {
       const idx = parseInt(qualitySelect.value, 10);

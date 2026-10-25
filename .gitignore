@@ -28,3 +28,6 @@ npm-debug.log*
 # Archives
 *.zip
 *.tar.gz
+
+# Scratch
+scratch/

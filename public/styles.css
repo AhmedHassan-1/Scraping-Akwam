@@ -686,8 +686,19 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 1.25rem;
-  padding-bottom: 0.75rem;
-  border-bottom: 1px solid var(--border);
+  padding: 0.85rem 1.25rem;
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.capsule-group-header:hover {
+  background: rgba(99, 102, 241, 0.08);
+  border-color: rgba(99, 102, 241, 0.35);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
 }
 
 .capsule-title-pill {
@@ -706,6 +717,12 @@ button:disabled {
   color: #ffffff;
 }
 
+.capsule-header-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
 .capsule-count-tag {
   font-size: 0.84rem;
   font-weight: 600;
@@ -714,6 +731,37 @@ button:disabled {
   border: 1px solid var(--border);
   padding: 0.25rem 0.8rem;
   border-radius: 999px;
+}
+
+.capsule-group-toggle-arrow {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.capsule-group-header:hover .capsule-group-toggle-arrow {
+  color: #ffffff;
+  background: rgba(99, 102, 241, 0.2);
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.capsule-group.is-open .capsule-group-toggle-arrow {
+  transform: rotate(-180deg);
+  background: rgba(99, 102, 241, 0.25);
+  color: #818cf8;
+  border-color: rgba(99, 102, 241, 0.5);
+}
+
+.capsule-group:not(.is-open) .movies-capsule-grid,
+.capsule-group:not(.is-open) .series-capsule-list {
+  display: none !important;
 }
 
 .movies-capsule-grid {
@@ -736,6 +784,12 @@ button:disabled {
   position: relative;
   overflow: hidden;
   box-shadow: 0 12px 36px -10px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(99, 102, 241, 0.15);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.series-capsule-card:hover {
+  border-color: rgba(99, 102, 241, 0.5) !important;
+  box-shadow: 0 16px 44px -10px rgba(0, 0, 0, 0.75), 0 0 20px rgba(99, 102, 241, 0.2);
 }
 
 .series-capsule-card::before {
@@ -747,6 +801,75 @@ button:disabled {
   height: 3px;
   background: var(--accent-gradient);
   opacity: 0.85;
+}
+
+.series-capsule-hero {
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s ease;
+}
+
+.series-capsule-hero:hover {
+  background: linear-gradient(180deg, rgba(40, 55, 80, 0.45) 0%, rgba(20, 28, 42, 0.2) 100%);
+}
+
+.series-capsule-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 0.5rem;
+}
+
+.series-capsule-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.series-ep-badge {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #38bdf8;
+  background: rgba(6, 182, 212, 0.12);
+  border: 1px solid rgba(6, 182, 212, 0.35);
+  padding: 0.22rem 0.75rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.series-toggle-arrow {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.series-capsule-hero:hover .series-toggle-arrow {
+  color: #ffffff;
+  background: rgba(99, 102, 241, 0.25);
+  border-color: rgba(99, 102, 241, 0.5);
+}
+
+.series-capsule-card.is-open .series-toggle-arrow {
+  transform: rotate(-180deg);
+  background: rgba(99, 102, 241, 0.35);
+  color: #a5b4fc;
+  border-color: rgba(99, 102, 241, 0.7);
+}
+
+.series-capsule-card:not(.is-open) .result-content {
+  display: none !important;
+}
+
+.series-capsule-card.is-open .result-content {
+  display: block;
 }
 
 .series-pill-badge {
@@ -761,7 +884,7 @@ button:disabled {
   color: #c084fc;
   font-size: 0.76rem;
   font-weight: 700;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.25rem;
 }
 
 .result-card {
