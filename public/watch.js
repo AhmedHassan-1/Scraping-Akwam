@@ -349,4 +349,39 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
   }
+
+  // Theater Mode / Wide Cinema Stage Toggle
+  const theaterBtn = document.getElementById("theaterModeToggleBtn");
+  const watchApp = document.querySelector(".watch-app");
+  if (theaterBtn && watchApp) {
+    theaterBtn.addEventListener("click", () => {
+      const isExpanded = watchApp.classList.toggle("theater-expanded");
+      theaterBtn.classList.toggle("active", isExpanded);
+      const btnText = theaterBtn.querySelector(".btn-text");
+      if (btnText) {
+        btnText.textContent = isExpanded ? "الوضع الافتراضي" : "وضع السينما";
+      }
+    });
+  }
+
+  // Copy Direct Stream/Download Link
+  const copyBtn = document.getElementById("copyVideoLinkBtn");
+  const copyText = document.getElementById("copyVideoLinkText");
+  if (copyBtn) {
+    copyBtn.addEventListener("click", async () => {
+      const currentUrl = sources[currentIndex]?.url || downloadBtn?.href;
+      if (!currentUrl || currentUrl === "#") return;
+      try {
+        await navigator.clipboard.writeText(currentUrl);
+        if (copyText) copyText.textContent = "تم نسخ الرابط ✓";
+        copyBtn.classList.add("copied");
+        setTimeout(() => {
+          if (copyText) copyText.textContent = "نسخ الرابط المباشر";
+          copyBtn.classList.remove("copied");
+        }, 2200);
+      } catch (_) {
+        if (copyText) copyText.textContent = "فشل النسخ";
+      }
+    });
+  }
 });
