@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { BadRequestException, ValidationPipe } from '@nestjs/common';
 import { join } from 'path';
+import * as crypto from 'crypto';
 import helmet from 'helmet';
 import cookieParser = require('cookie-parser');
 import hpp = require('hpp');
@@ -172,6 +173,54 @@ async function bootstrap() {
     .addTag('utils', 'أدوات مساعدة: فحص الحالة وبروكسي الصور الآمن (Health & Safe Proxy)')
     .build();
 
+  // ── Swagger Basic Authentication ─────────────────────────────────────────
+  const swaggerUser = config.get<string>('swagger.user', process.env.SWAGGER_USER || 'admin');
+  const swaggerPassword = config.get<string>('swagger.password', process.env.SWAGGER_PASSWORD || 'admin123');
+
+  if (swaggerUser && swaggerPassword) {
+    app.use(
+      ['/api/docs', '/api/docs-json', '/api/docs-yaml'],
+      (req: express.Request, res: express.Response, next: express.NextFunction) => {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Basic ')) {
+          res.setHeader('WWW-Authenticate', 'Basic realm="Akwam API Documentation"');
+          return res.status(401).send('Unauthorized: Authentication required');
+        }
+
+        const base64Credentials = authHeader.split(' ')[1] || '';
+        const credentials = Buffer.from(base64Credentials, 'base64').toString('utf8');
+        const colonIndex = credentials.indexOf(':');
+
+        if (colonIndex === -1) {
+          res.setHeader('WWW-Authenticate', 'Basic realm="Akwam API Documentation"');
+          return res.status(401).send('Unauthorized: Invalid credentials format');
+        }
+
+        const user = credentials.substring(0, colonIndex);
+        const pass = credentials.substring(colonIndex + 1);
+
+        const userBuf = Buffer.from(user);
+        const expectedUserBuf = Buffer.from(swaggerUser);
+        const passBuf = Buffer.from(pass);
+        const expectedPassBuf = Buffer.from(swaggerPassword);
+
+        const isUserValid =
+          userBuf.length === expectedUserBuf.length &&
+          crypto.timingSafeEqual(userBuf, expectedUserBuf);
+        const isPassValid =
+          passBuf.length === expectedPassBuf.length &&
+          crypto.timingSafeEqual(passBuf, expectedPassBuf);
+
+        if (!isUserValid || !isPassValid) {
+          res.setHeader('WWW-Authenticate', 'Basic realm="Akwam API Documentation"');
+          return res.status(401).send('Unauthorized: Invalid username or password');
+        }
+
+        return next();
+      },
+    );
+  }
+
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api/docs', app, document, {
     customSiteTitle: 'Akwam API Documentation',
@@ -208,14 +257,17 @@ async function bootstrap() {
   console.log(`📚 Swagger docs at http://0.0.0.0:${port}/api/docs`);
 }
 
-// Safety net for transient network/TLS/stream resets (e.g. idle remote Redis socket or abrupt client disconnect)
+// Safety net for transient network/TLS/stream resets (e.g. idle remote Redis socket, DNS blips, or abrupt client disconnect)
 process.on('unhandledRejection', (reason: any) => {
   const msg = reason?.message || String(reason);
   if (
     msg.includes('ECONNRESET') ||
     msg.includes('read ECONNRESET') ||
     msg.includes('ERR_STREAM_PREMATURE_CLOSE') ||
-    msg.includes('socket hang up')
+    msg.includes('socket hang up') ||
+    msg.includes('ENOTFOUND') ||
+    msg.includes('EAI_AGAIN') ||
+    msg.includes('ETIMEDOUT')
   ) {
     console.warn('Recovered from transient TLS/network socket reset:', msg);
     return;
@@ -229,12 +281,19 @@ process.on('uncaughtException', (err: any) => {
     err?.code === 'ECONNRESET' ||
     err?.code === 'ERR_STREAM_PREMATURE_CLOSE' ||
     err?.code === 'EPIPE' ||
+    err?.code === 'ENOTFOUND' ||
+    err?.code === 'EAI_AGAIN' ||
+    err?.code === 'ETIMEDOUT' ||
+    err?.code === 'ECONNREFUSED' ||
     msg.includes('ECONNRESET') ||
     msg.includes('read ECONNRESET') ||
     msg.includes('socket hang up') ||
-    msg.includes('premature close')
+    msg.includes('premature close') ||
+    msg.includes('ENOTFOUND') ||
+    msg.includes('EAI_AGAIN') ||
+    msg.includes('ETIMEDOUT')
   ) {
-    console.warn('Recovered from transient TLS/stream socket reset:', msg);
+    console.warn('Recovered from transient TLS/stream/DNS socket reset:', msg);
     return;
   }
   console.error('Uncaught Exception:', err);

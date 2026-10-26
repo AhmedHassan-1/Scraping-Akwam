@@ -7,6 +7,8 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { join } from 'path';
+import { existsSync } from 'fs';
 import { DomainException, JobNotFoundException } from '../../core/errors/domain.exception';
 
 @Catch()
@@ -57,6 +59,25 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
       this.logger.warn(
         `[ReqID: ${requestId || 'N/A'}] HTTP 404 [${request.method} ${request.url}]`,
       );
+
+      // If browser request for HTML page, serve the 404.html page
+      const isApiRequest =
+        request.url.startsWith('/akwam') ||
+        request.url.startsWith('/api');
+      const acceptsHtml = typeof request.accepts === 'function' && request.accepts('html');
+      if (acceptsHtml && !isApiRequest && request.method === 'GET') {
+        const notFoundHtmlPath = join(process.cwd(), 'public', '404.html');
+        if (existsSync(notFoundHtmlPath)) {
+          return response.status(HttpStatus.NOT_FOUND).sendFile(notFoundHtmlPath, (err) => {
+            if (err && !response.headersSent) {
+              response.status(HttpStatus.NOT_FOUND).json({
+                statusCode: HttpStatus.NOT_FOUND,
+                message: 'الصفحة غير موجودة',
+              });
+            }
+          });
+        }
+      }
     } else {
       this.logger.warn(
         `[ReqID: ${requestId || 'N/A'}] HTTP ${status} [${request.method} ${request.url}]: ${

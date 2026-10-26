@@ -73,5 +73,9 @@ export default () => {
       ),
       windowSec: parseInt(process.env.RATE_LIMIT_WINDOW_SEC || '60', 10),
     },
+    swagger: {
+      user: process.env.SWAGGER_USER || 'admin',
+      password: process.env.SWAGGER_PASSWORD || 'admin123',
+    },
   };
 };

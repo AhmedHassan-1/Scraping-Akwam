@@ -35,6 +35,10 @@ export class RedisJobRepository
       this.logger.log('Redis Event Subscriber connected');
     });
 
+    this.subscriber.on('error', (err: any) => {
+      this.logger.warn(`Redis Event Subscriber connection event: ${err.message}`);
+    });
+
     this.subscriber.on('message', (channel: string, message: string) => {
       if (!channel.startsWith(this.eventChannelPrefix)) return;
       const jobId = channel.slice(this.eventChannelPrefix.length);

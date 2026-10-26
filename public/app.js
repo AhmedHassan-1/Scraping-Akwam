@@ -1404,6 +1404,21 @@ async function resumeActiveJob(jobId) {
  */
 function restoreSearchState() {
   try {
+    // Check if query parameter exists in URL (e.g. from 404 page search redirect or external link)
+    const urlParams = new URLSearchParams(window.location.search);
+    const queryParam = urlParams.get('q') || urlParams.get('search');
+    if (queryParam && queryParam.trim()) {
+      searchInput.value = queryParam.trim();
+      updateResetButtonVisibility();
+      try {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } catch (_) {}
+      setTimeout(() => {
+        void startSearch();
+      }, 60);
+      return;
+    }
+
     const savedResults = sessionStorage.getItem('akwam_last_results');
     const savedQuery = sessionStorage.getItem('akwam_last_query');
     const savedJobId = sessionStorage.getItem('akwam_last_job_id');
