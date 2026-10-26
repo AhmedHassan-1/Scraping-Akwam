@@ -32,6 +32,9 @@ export class BullMqQueueService implements IQueueProvider, OnModuleInit, OnModul
     const concurrency = this.config.get<number>('queue.maxConcurrentJobs', 1);
 
     this.queue = new Queue<AkwamJobPayload>('akwam-jobs', { connection });
+    this.queue.on('error', (err) => {
+      this.logger.warn(`BullMQ Queue Redis connection event: ${err.message}`);
+    });
     this.logger.log(`BullMQ Queue initialized (concurrency=${concurrency})`);
   }
 

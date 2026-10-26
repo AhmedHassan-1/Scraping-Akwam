@@ -1080,6 +1080,13 @@ button:disabled {
   justify-content: center;
   color: var(--text-muted);
   transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform;
+}
+
+.series-capsule-hero:focus-visible,
+.movie-capsule-hero:focus-visible {
+  outline: 2px solid rgba(99, 102, 241, 0.7);
+  outline-offset: -2px;
 }
 
 .series-capsule-hero:hover .series-toggle-arrow {

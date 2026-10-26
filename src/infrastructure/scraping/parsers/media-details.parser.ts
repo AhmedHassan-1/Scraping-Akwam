@@ -11,7 +11,11 @@ export interface ParsedMediaDetails {
 }
 
 export class MediaDetailsParser {
-  static parse(htmlBuffer: Buffer, fallbackTitle: string): ParsedMediaDetails {
+  static parse(
+    htmlBuffer: Buffer,
+    fallbackTitle: string,
+    itemUrl?: string,
+  ): ParsedMediaDetails {
     const $ = cheerio.load(htmlBuffer);
 
     const coverRow = $(
@@ -21,39 +25,93 @@ export class MediaDetailsParser {
     const infoItems = infoCol.children('div');
 
     const title = infoCol.find('h1').text().trim() || fallbackTitle;
-    const rating = infoItems.eq(0).find('span').text().trim();
-    const lang = infoItems.eq(1).find('span').text().trim();
-    const image = coverRow.children().eq(0).find('a').attr('href') ?? '';
+    const coverCol = coverRow.children().eq(0);
+    const image =
+      coverCol.find('a').attr('href') ||
+      coverCol.find('img').attr('data-src') ||
+      coverCol.find('img').attr('src') ||
+      '';
 
-    const isEnglish = lang === 'اللغة : الإنجليزية';
-    const offset = isEnglish ? 1 : 0;
+    let rating = '';
+    let lang = '';
+    let translation = '';
+    let quality = '';
+    let country = '';
+    let year = '';
+    let time = '';
+    const information: string[] = [];
 
-    const quality = infoItems.eq(2 + offset).find('span').text().trim();
-    const country = infoItems.eq(3 + offset).find('span').text().trim();
-    const year = infoItems.eq(4 + offset).find('span').text().trim();
-    const time = infoItems.eq(5 + offset).find('span').text().trim();
-    const infoLinks = infoItems.eq(6 + offset).find('a').toArray();
-    const information = infoLinks.map((a) => $(a).text().trim());
+    // Parse metadata dynamically by labels to withstand any order or language variation
+    infoItems.each((_, el) => {
+      const fullText = $(el).text().replace(/\s+/g, ' ').trim();
+      const spanText = $(el).find('span').text().trim();
+      const val = spanText || fullText;
 
-    const isSeries = /مسلسل/.test(time);
+      if (/اللغة/i.test(fullText)) {
+        lang = val;
+      } else if (/الترجمة/i.test(fullText)) {
+        translation = val;
+      } else if (/الجودة|جودة/i.test(fullText)) {
+        quality = val;
+      } else if (/انتاج|إنتاج/i.test(fullText)) {
+        country = val;
+      } else if (/السنة|سنة/i.test(fullText)) {
+        year = val;
+      } else if (/المدة|مدة/i.test(fullText)) {
+        time = val;
+      }
+    });
+
+    if (!rating) {
+      rating =
+        infoItems.eq(0).find('span').text().trim() ||
+        infoItems.eq(0).text().replace(/\s+/g, ' ').trim();
+    }
+
+    // Extract genres and categories
+    infoCol
+      .find('a[href*="/genre/"], a[href*="/tag/"], a[href*="/category/"]')
+      .each((_, a) => {
+        const t = $(a).text().trim();
+        if (t && !information.includes(t)) information.push(t);
+      });
+
+    if (information.length === 0) {
+      // Fallback: collect trailing links in infoCol that are not main navigation
+      infoCol.find('a').each((_, a) => {
+        const href = $(a).attr('href') || '';
+        const t = $(a).text().trim();
+        if (
+          t &&
+          !href.includes('/movie') &&
+          !href.includes('/series') &&
+          !information.includes(t)
+        ) {
+          information.push(t);
+        }
+      });
+    }
+
+    // Robust multi-factor series detection
+    const hasEpisodesSection =
+      $('#series-episodes').length > 0 ||
+      $('a[href*="/episode/"]').length > 0;
+    const isSeriesUrl = Boolean(itemUrl && /\/series\//i.test(itemUrl));
+    const isSeriesText = /مسلسل/i.test(time) || /مسلسل/i.test(title);
+    const isSeries = hasEpisodesSection || isSeriesUrl || isSeriesText;
 
     if (isSeries) {
-      const containers = $('.page-movie.page-film .container');
-      let episodesEl = containers
-        .eq(1)
-        .find('#series-episodes .widget-body .bg-primary2.p-4.col-lg-4.col-md-6.col-12');
-      if (!episodesEl.length) {
-        episodesEl = containers
-          .eq(1)
-          .find('#series-episodes')
-          .last()
-          .find('.widget-body .row .bg-primary2.p-4.col-lg-4.col-md-6.col-12');
-      }
-
       const episodeUrls: string[] = [];
-      episodesEl.each((_, ep) => {
-        const epLink = $(ep).find('h2 a').attr('href');
-        if (epLink) episodeUrls.push(epLink);
+
+      // Collect distinct episode URLs from the episode listing
+      const episodesContainer = $('#series-episodes');
+      const searchScope = episodesContainer.length ? episodesContainer : $('body');
+
+      searchScope.find('a[href*="/episode/"]').each((_, a) => {
+        const epLink = $(a).attr('href')?.trim();
+        if (epLink && !episodeUrls.includes(epLink)) {
+          episodeUrls.push(epLink);
+        }
       });
 
       const series: Series = {
@@ -77,7 +135,9 @@ export class MediaDetailsParser {
       .filter((_, el) => $(el).find('a[href*="/download/"]').length > 0)
       .first();
 
-    const qualityTabs = filmWidget.find('.header-tabs-container .header-tabs li, .header-tabs li');
+    const qualityTabs = filmWidget.find(
+      '.header-tabs-container .header-tabs li, .header-tabs li',
+    );
     const qualityContents = filmWidget.find('.tab-content.quality, .tab-content');
 
     const qualities: DownloadQuality[] = [];

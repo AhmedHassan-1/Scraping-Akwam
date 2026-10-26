@@ -32,6 +32,10 @@ export class AkwamJobProcessor implements OnModuleInit, OnModuleDestroy {
       { connection, concurrency },
     );
 
+    this.worker.on('error', (err) => {
+      this.logger.warn(`BullMQ Worker Redis connection event: ${err.message}`);
+    });
+
     this.worker.on('failed', (job, err) => {
       this.logger.error(`Queue job ${job?.id} failed: ${err.message}`);
     });

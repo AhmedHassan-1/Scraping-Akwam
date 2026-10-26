@@ -11,6 +11,7 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/vendor/sweetalert2/sweetalert2.min.css" />
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css"
@@ -158,7 +159,12 @@
       </nav>
     </footer>
 
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="/vendor/sweetalert2/sweetalert2.all.min.js"></script>
+    <script>
+      if (typeof Swal === 'undefined') {
+        document.write('<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"><\/script>');
+      }
+    </script>
     <script src="/app.js"></script>
   </body>
 </html>

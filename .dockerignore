@@ -1,0 +1,14 @@
+node_modules
+dist
+.git
+.gitignore
+*.log
+.env
+.env.*
+!.env.example
+*.zip
+*.tar.gz
+scratch
+.DS_Store
+.vscode
+.idea

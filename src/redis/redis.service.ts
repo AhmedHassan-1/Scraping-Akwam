@@ -44,6 +44,11 @@ export class RedisService implements OnModuleDestroy {
       enableReadyCheck: false,
       keepAlive: 30000,
       connectTimeout: 10000,
+      retryStrategy: (times: number) => Math.min(times * 150, 3000),
+      reconnectOnError: (err: Error) => {
+        const targetErrors = ['READONLY', 'ECONNRESET', 'ETIMEDOUT'];
+        return targetErrors.some((t) => err.message.includes(t));
+      },
     };
   }
 
@@ -64,11 +69,16 @@ export class RedisService implements OnModuleDestroy {
       port,
       username: username || undefined,
       password: password || undefined,
-      tls: tls || (password ? {} : undefined),
+      tls: tls || undefined,
       maxRetriesPerRequest: null,
       enableReadyCheck: false,
       keepAlive: 30000,
       connectTimeout: 10000,
+      retryStrategy: (times: number) => Math.min(times * 150, 3000),
+      reconnectOnError: (err: Error) => {
+        const targetErrors = ['READONLY', 'ECONNRESET', 'ETIMEDOUT'];
+        return targetErrors.some((t) => err.message.includes(t));
+      },
     };
   }
 }

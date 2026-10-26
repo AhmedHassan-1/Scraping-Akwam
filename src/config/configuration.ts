@@ -30,6 +30,9 @@ export default () => {
 
   return {
     port: parseInt(process.env.PORT || '3000', 10),
+    akwam: {
+      baseUrl: (process.env.AKWAM_BASE_URL || 'https://ak.sv').replace(/\/+$/, ''),
+    },
     redis: {
       url: redisUrl || undefined,
       host: redisHost,

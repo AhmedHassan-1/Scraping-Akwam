@@ -4,7 +4,7 @@ import { SearchCandidate } from '../../../core/domain/entities/search-candidate.
 export class SearchPageParser {
   private static readonly siteOrigin = 'https://ak.sv';
 
-  static parse(htmlBuffer: Buffer): SearchCandidate[] {
+  static parse(htmlBuffer: Buffer, origin?: string): SearchCandidate[] {
     const $ = cheerio.load(htmlBuffer);
     let searchItems = $(
       '.site-container .page-search .container:nth-child(2) .widget .widget-body.row.flex-wrap .col-lg-auto.col-md-4.col-6.mb-12',
@@ -31,20 +31,20 @@ export class SearchPageParser {
         $(item).find('h3 a').text().trim() ||
         'بدون عنوان';
 
-      const image = this.extractEntryImage($, item);
+      const image = this.extractEntryImage($, item, origin);
 
       candidates.push({
         id: id++,
         title,
         image,
-        url: this.resolveMediaUrl(link),
+        url: this.resolveMediaUrl(link, origin),
       });
     }
 
     return candidates;
   }
 
-  private static extractEntryImage($: cheerio.CheerioAPI, item: any): string {
+  private static extractEntryImage($: cheerio.CheerioAPI, item: any, origin?: string): string {
     const entry = $(item).find('.entry-image').first();
     const imgEl = entry.find('img').first();
 
@@ -75,20 +75,21 @@ export class SearchPageParser {
     if (bgMatch?.[1]) candidates.push(bgMatch[1]);
 
     for (const raw of candidates) {
-      const resolved = this.resolveMediaUrl(raw);
+      const resolved = this.resolveMediaUrl(raw, origin);
       if (resolved && !this.isPlaceholderImage(resolved)) return resolved;
     }
     return '';
   }
 
-  private static resolveMediaUrl(url: string): string {
+  private static resolveMediaUrl(url: string, origin?: string): string {
     if (!url?.trim()) return '';
     const trimmed = url.trim();
     if (trimmed.startsWith('data:')) return '';
     if (/^https?:\/\//i.test(trimmed)) return trimmed;
     if (trimmed.startsWith('//')) return `https:${trimmed}`;
-    if (trimmed.startsWith('/')) return `${this.siteOrigin}${trimmed}`;
-    return `${this.siteOrigin}/${trimmed}`;
+    const base = (origin || process.env.AKWAM_BASE_URL || this.siteOrigin).replace(/\/+$/, '');
+    if (trimmed.startsWith('/')) return `${base}${trimmed}`;
+    return `${base}/${trimmed}`;
   }
 
   private static isPlaceholderImage(url: string): boolean {

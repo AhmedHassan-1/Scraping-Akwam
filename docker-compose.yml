@@ -1,13 +1,46 @@
 services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: akwam-api
+    restart: unless-stopped
+    ports:
+      - '5000:5000'
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_TLS=false
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - akwam-net
+
   redis:
     image: redis:7-alpine
     container_name: akwam-redis
+    restart: unless-stopped
     ports:
       - '6379:6379'
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
-    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - akwam-net
 
 volumes:
   redis_data:
+
+networks:
+  akwam-net:
+    driver: bridge

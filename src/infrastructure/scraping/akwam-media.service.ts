@@ -106,6 +106,7 @@ export class AkwamMediaService {
     const parsedDetails = MediaDetailsParser.parse(
       Buffer.from(itemRes.data),
       fallbackTitle,
+      link,
     );
 
     if (parsedDetails.isSeries && parsedDetails.series && parsedDetails.episodeUrls) {

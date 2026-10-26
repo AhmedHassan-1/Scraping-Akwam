@@ -1,4 +1,5 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import * as http from 'http';
 import * as https from 'https';
@@ -7,7 +8,7 @@ import { IRateLimiter } from '../../core/interfaces/rate-limiter.interface';
 @Injectable()
 export class AkwamHttpClient {
   private readonly logger = new Logger(AkwamHttpClient.name);
-  public readonly siteOrigin = 'https://ak.sv';
+  public readonly siteOrigin: string;
 
   private readonly httpAgent = new http.Agent({ keepAlive: true, maxSockets: 50 });
   private readonly httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 50 });
@@ -27,7 +28,15 @@ export class AkwamHttpClient {
   constructor(
     @Inject('IRateLimiter')
     private readonly rateLimiter: IRateLimiter,
+    @Optional()
+    private readonly config?: ConfigService,
   ) {
+    const rawOrigin =
+      this.config?.get<string>('akwam.baseUrl') ||
+      process.env.AKWAM_BASE_URL ||
+      'https://ak.sv';
+    this.siteOrigin = rawOrigin.replace(/\/+$/, '');
+
     this.client = axios.create({
       httpAgent: this.httpAgent,
       httpsAgent: this.httpsAgent,

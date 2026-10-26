@@ -116,9 +116,19 @@ searchForm.addEventListener('submit', (e) => {
   startSearch();
 });
 
+let isResetting = false;
+let currentSearchSeq = 0;
+
 cancelBtn.addEventListener('click', cancelSearch);
-if (resetBtn) resetBtn.addEventListener('click', handleResetRequest);
-if (resetResultsBtn) resetResultsBtn.addEventListener('click', handleResetRequest);
+
+// Delegated click listener ensures clicks on button, reset icon, or child text always trigger reset exactly once
+document.addEventListener('click', (e) => {
+  const target = e.target.closest('#resetResultsBtn, #resetBtn, .btn-reset-results, .btn-reset');
+  if (target) {
+    e.preventDefault();
+    handleResetRequest(e);
+  }
+});
 if (clearInputBtn) {
   clearInputBtn.addEventListener('click', () => {
     searchInput.value = '';
@@ -145,46 +155,61 @@ function proxyImageUrl(url) {
 }
 
 function showError(title, text) {
-  return Swal.fire({
-    ...SWAL_BASE,
-    icon: 'error',
-    title,
-    text: text || undefined,
-  });
+  if (typeof Swal !== 'undefined' && Swal && typeof Swal.fire === 'function') {
+    return Swal.fire({
+      ...SWAL_BASE,
+      icon: 'error',
+      title,
+      text: text || undefined,
+    });
+  }
+  console.error('[Error]', title, text);
+  alert(`${title}\n${text || ''}`);
 }
 
 function showWarning(title, text) {
-  return Swal.fire({
-    ...SWAL_BASE,
-    icon: 'warning',
-    title,
-    text: text || undefined,
-  });
+  if (typeof Swal !== 'undefined' && Swal && typeof Swal.fire === 'function') {
+    return Swal.fire({
+      ...SWAL_BASE,
+      icon: 'warning',
+      title,
+      text: text || undefined,
+    });
+  }
+  console.warn('[Warning]', title, text);
 }
 
 function showInfo(title, text) {
-  return Swal.fire({
-    ...SWAL_BASE,
-    icon: 'info',
-    title,
-    text: text || undefined,
-  });
+  if (typeof Swal !== 'undefined' && Swal && typeof Swal.fire === 'function') {
+    return Swal.fire({
+      ...SWAL_BASE,
+      icon: 'info',
+      title,
+      text: text || undefined,
+    });
+  }
+  console.info('[Info]', title, text);
 }
 
 function showSuccess(title, text) {
-  return Swal.fire({
-    ...SWAL_BASE,
-    icon: 'success',
-    title,
-    text: text || undefined,
-    timer: 2800,
-    showConfirmButton: true,
-  });
+  if (typeof Swal !== 'undefined' && Swal && typeof Swal.fire === 'function') {
+    return Swal.fire({
+      ...SWAL_BASE,
+      icon: 'success',
+      title,
+      text: text || undefined,
+      timer: 2800,
+      showConfirmButton: true,
+    });
+  }
+  console.log('[Success]', title, text);
 }
 
 async function startSearch() {
   const query = searchInput.value.trim();
   if (!query) return;
+
+  const thisSeq = ++currentSearchSeq;
 
   // Clear previous session storage for results
   try {
@@ -211,10 +236,12 @@ async function startSearch() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ search: query }),
     });
+    if (thisSeq !== currentSearchSeq) return;
     if (!res.ok) {
       throw new Error(await parseErrorResponse(res));
     }
     const job = await res.json();
+    if (thisSeq !== currentSearchSeq) return;
     currentJobId = job.id;
     try {
       sessionStorage.setItem('akwam_last_job_id', job.id);
@@ -222,6 +249,7 @@ async function startSearch() {
     applyQueueFromSnap(job);
     connectEvents(job.id);
   } catch (err) {
+    if (thisSeq !== currentSearchSeq) return;
     await showError('فشل البحث', err.message || 'تعذر بدء عملية البحث');
     setBusy(false);
   }
@@ -487,6 +515,7 @@ async function startSelectedProcessing() {
     return;
   }
 
+  const thisSeq = ++currentSearchSeq;
   selectionSection.classList.add('hidden');
   startProcessBtn.disabled = true;
 
@@ -496,10 +525,12 @@ async function startSelectedProcessing() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ selectedIds }),
     });
+    if (thisSeq !== currentSearchSeq) return;
     if (!res.ok) {
       throw new Error(await parseErrorResponse(res));
     }
   } catch (err) {
+    if (thisSeq !== currentSearchSeq) return;
     await showError('فشل المعالجة', err.message || 'تعذر بدء المعالجة');
     selectionSection.classList.remove('hidden');
     startProcessBtn.disabled = false;
@@ -545,42 +576,37 @@ function updateResetButtonVisibility() {
   }
 }
 
-async function handleResetRequest() {
-  const hasResults = !resultsSection.classList.contains('hidden') && resultsContainer.children.length > 0;
-
-  if (hasResults) {
-    const result = await Swal.fire({
-      ...SWAL_BASE,
-      icon: 'question',
-      title: 'إعادة ضبط الصفحة؟',
-      text: 'هل تريد مسح جميع نتائج البحث الحالية والبدء من جديد؟',
-      showCancelButton: true,
-      confirmButtonText: 'نعم، مسح وابدأ من جديد',
-      cancelButtonText: 'إلغاء',
-      confirmButtonColor: '#ef4444',
-      cancelButtonColor: '#475569',
-    });
-
-    if (!result.isConfirmed) return;
+function handleResetRequest(e) {
+  if (e && typeof e.preventDefault === 'function') {
+    e.preventDefault();
   }
-
-  await resetAll();
+  if (e && typeof e.stopPropagation === 'function') {
+    e.stopPropagation();
+  }
+  if (isResetting) return;
+  isResetting = true;
+  try {
+    resetAll();
+  } finally {
+    setTimeout(() => {
+      isResetting = false;
+    }, 350);
+  }
 }
 
-async function resetAll() {
-  const jobId = currentJobId;
+function resetAll() {
+  currentSearchSeq++;
+  const jobId = currentJobId || sessionStorage.getItem('akwam_last_job_id');
 
-  // Cleanup active events and queue polling
-  cleanupJob();
-
-  // Cancel job on backend if one was running
-  if (jobId) {
-    try {
-      await fetch(`/akwam/jobs/${jobId}`, { method: 'DELETE' });
-    } catch (_) {}
+  // 1. Immediately wipe UI state synchronously
+  resetSearchUI();
+  if (searchInput) {
+    searchInput.value = '';
   }
+  setBusy(false);
+  updateResetButtonVisibility();
 
-  // Clear all cached search states in sessionStorage
+  // 2. Clear all cached search states in sessionStorage
   try {
     sessionStorage.removeItem('akwam_last_results');
     sessionStorage.removeItem('akwam_last_query');
@@ -588,32 +614,36 @@ async function resetAll() {
     sessionStorage.removeItem('akwam_scroll_pos');
   } catch (_) {}
 
-  // Reset UI components
-  resetSearchUI();
-  searchInput.value = '';
-  setBusy(false);
-  updateResetButtonVisibility();
+  // 3. Immediately clean up events & polling
+  cleanupJob();
 
-  // Smooth scroll back to top
+  // 4. Smooth scroll back to top of the page
   window.scrollTo({ top: 0, behavior: 'smooth' });
 
-  // Focus search input so user can type immediately
+  // 5. Focus search input so user can type immediately
   setTimeout(() => {
-    searchInput.focus();
-  }, 100);
+    if (searchInput) searchInput.focus();
+  }, 80);
 
-  // Show a clean Toast notification confirming the reset
-  Swal.fire({
-    icon: 'success',
-    title: 'تمت إعادة ضبط الصفحة',
-    text: 'تم مسح النتائج السابقة وأصبحت الصفحة جاهزة لبحث جديد.',
-    toast: true,
-    position: 'top-end',
-    showConfirmButton: false,
-    timer: 2500,
-    timerProgressBar: true,
-    customClass: { popup: 'swal-rtl' },
-  });
+  // 6. Fire background cancellation if a job was running
+  if (jobId) {
+    fetch(`/akwam/jobs/${jobId}`, { method: 'DELETE' }).catch(() => {});
+  }
+
+  // 7. Show a clean Toast notification confirming the reset
+  if (typeof Swal !== 'undefined' && Swal && typeof Swal.fire === 'function') {
+    Swal.fire({
+      icon: 'success',
+      title: 'تم مسح النتائج',
+      text: 'الصفحة جاهزة الآن لبحث جديد.',
+      toast: true,
+      position: 'top-end',
+      showConfirmButton: false,
+      timer: 2000,
+      timerProgressBar: true,
+      customClass: { popup: 'swal-rtl' },
+    });
+  }
 }
 
 async function cancelSearch() {
@@ -671,10 +701,13 @@ function renderResults(data) {
   );
 
   if (!hasContent) {
+    resultsSection.classList.add('hidden');
     resultsContainer.innerHTML = '';
     void showNoResultsAlert();
     return;
   }
+
+  resultsSection.classList.remove('hidden');
 
   // Preserve open states across real-time SSE stream updates
   const previouslyOpenKeys = new Set(
@@ -1067,6 +1100,8 @@ function renderItemCard(
   }
   hero?.addEventListener('click', (e) => {
     if (e.target.closest('a') || e.target.closest('button')) return;
+    const sel = window.getSelection();
+    if (sel && sel.toString().trim().length > 0) return;
     toggleCard();
   });
   hero?.addEventListener('keydown', (e) => {

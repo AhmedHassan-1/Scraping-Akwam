@@ -54,11 +54,13 @@ async function bootstrap() {
             "'unsafe-inline'",
             "'unsafe-eval'",
             'https://cdnjs.cloudflare.com',
+            'https://cdn.jsdelivr.net',
           ],
           styleSrc: [
             "'self'",
             "'unsafe-inline'",
             'https://fonts.googleapis.com',
+            'https://cdn.jsdelivr.net',
           ],
           imgSrc: ["'self'", 'data:', 'https:', 'blob:'],
           fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
@@ -78,7 +80,9 @@ async function bootstrap() {
   // 8. CORS configuration
   const corsOrigin = process.env.CORS_ORIGIN;
   app.enableCors({
-    origin: corsOrigin ? corsOrigin.split(',') : '*',
+    origin: corsOrigin
+      ? corsOrigin.split(',').map((o) => o.trim())
+      : (origin, callback) => callback(null, true),
     methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
       'Content-Type',

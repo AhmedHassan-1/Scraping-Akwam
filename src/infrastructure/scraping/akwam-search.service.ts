@@ -25,7 +25,10 @@ export class AkwamSearchService {
     const searchUrl = `${this.httpClient.siteOrigin}/search?q=${encodeURIComponent(search)}`;
     const response = await this.httpClient.get(searchUrl, { signal });
 
-    const candidates = SearchPageParser.parse(Buffer.from(response.data));
+    const candidates = SearchPageParser.parse(
+      Buffer.from(response.data),
+      this.httpClient.siteOrigin,
+    );
 
     onProgress?.({
       phase: 'discover',
