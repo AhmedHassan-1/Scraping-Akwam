@@ -7,6 +7,7 @@ import { Request, Response } from 'express';
 import * as http from 'http';
 import * as https from 'https';
 import { URL } from 'url';
+import { pipeline } from 'stream';
 
 @Injectable()
 export class AkwamStreamService {
@@ -185,7 +186,15 @@ export class AkwamStreamService {
         return;
       }
 
-      remoteRes.pipe(res);
+      remoteRes.on('error', (err) => {
+        this.logger.debug(`Remote stream response error: ${err.message}`);
+      });
+
+      pipeline(remoteRes, res, (err) => {
+        if (err && err.code !== 'ERR_STREAM_PREMATURE_CLOSE') {
+          this.logger.debug(`Video stream pipeline ended: ${err.message}`);
+        }
+      });
     });
 
     remoteReq.on('error', (err) => {
@@ -199,7 +208,9 @@ export class AkwamStreamService {
     });
 
     remoteReq.on('timeout', () => {
-      remoteReq.destroy();
+      try {
+        remoteReq.destroy();
+      } catch (_) {}
       if (!res.headersSent) {
         res.status(504).json({
           statusCode: 504,
@@ -210,11 +221,16 @@ export class AkwamStreamService {
 
     // Abort remote request when user pauses, seeks, or navigates away
     req.on('close', () => {
-      remoteReq.destroy();
+      try {
+        remoteReq.destroy();
+      } catch (_) {}
     });
 
-    res.on('error', () => {
-      remoteReq.destroy();
+    res.on('error', (err) => {
+      this.logger.debug(`Client stream response error: ${err.message}`);
+      try {
+        remoteReq.destroy();
+      } catch (_) {}
     });
 
     remoteReq.end();

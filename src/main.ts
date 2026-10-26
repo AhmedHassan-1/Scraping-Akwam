@@ -208,10 +208,15 @@ async function bootstrap() {
   console.log(`📚 Swagger docs at http://0.0.0.0:${port}/api/docs`);
 }
 
-// Safety net for transient network/TLS resets (e.g. idle remote Redis socket reset)
+// Safety net for transient network/TLS/stream resets (e.g. idle remote Redis socket or abrupt client disconnect)
 process.on('unhandledRejection', (reason: any) => {
   const msg = reason?.message || String(reason);
-  if (msg.includes('ECONNRESET') || msg.includes('read ECONNRESET')) {
+  if (
+    msg.includes('ECONNRESET') ||
+    msg.includes('read ECONNRESET') ||
+    msg.includes('ERR_STREAM_PREMATURE_CLOSE') ||
+    msg.includes('socket hang up')
+  ) {
     console.warn('Recovered from transient TLS/network socket reset:', msg);
     return;
   }
@@ -220,8 +225,16 @@ process.on('unhandledRejection', (reason: any) => {
 
 process.on('uncaughtException', (err: any) => {
   const msg = err?.message || String(err);
-  if (err?.code === 'ECONNRESET' || msg.includes('ECONNRESET')) {
-    console.warn('Recovered from transient TLS/socket reset:', msg);
+  if (
+    err?.code === 'ECONNRESET' ||
+    err?.code === 'ERR_STREAM_PREMATURE_CLOSE' ||
+    err?.code === 'EPIPE' ||
+    msg.includes('ECONNRESET') ||
+    msg.includes('read ECONNRESET') ||
+    msg.includes('socket hang up') ||
+    msg.includes('premature close')
+  ) {
+    console.warn('Recovered from transient TLS/stream socket reset:', msg);
     return;
   }
   console.error('Uncaught Exception:', err);
