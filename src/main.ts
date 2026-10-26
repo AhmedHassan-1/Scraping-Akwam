@@ -189,7 +189,21 @@ async function bootstrap() {
     index: 'index.html',
   });
 
-  await app.listen(port, '0.0.0.0');
+  let retries = 5;
+  while (retries > 0) {
+    try {
+      await app.listen(port, '0.0.0.0');
+      break;
+    } catch (err: any) {
+      if (err.code === 'EADDRINUSE' && retries > 1) {
+        console.warn(`Port ${port} in use (possibly TimeWait). Retrying in 2 seconds...`);
+        await new Promise((r) => setTimeout(r, 2000));
+        retries--;
+      } else {
+        throw err;
+      }
+    }
+  }
   console.log(`🚀 Server running on http://0.0.0.0:${port}`);
   console.log(`📚 Swagger docs at http://0.0.0.0:${port}/api/docs`);
 }
