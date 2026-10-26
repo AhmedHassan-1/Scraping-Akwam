@@ -194,4 +194,24 @@ async function bootstrap() {
   console.log(`📚 Swagger docs at http://0.0.0.0:${port}/api/docs`);
 }
 
+// Safety net for transient network/TLS resets (e.g. idle remote Redis socket reset)
+process.on('unhandledRejection', (reason: any) => {
+  const msg = reason?.message || String(reason);
+  if (msg.includes('ECONNRESET') || msg.includes('read ECONNRESET')) {
+    console.warn('Recovered from transient TLS/network socket reset:', msg);
+    return;
+  }
+  console.error('Unhandled Rejection at:', reason);
+});
+
+process.on('uncaughtException', (err: any) => {
+  const msg = err?.message || String(err);
+  if (err?.code === 'ECONNRESET' || msg.includes('ECONNRESET')) {
+    console.warn('Recovered from transient TLS/socket reset:', msg);
+    return;
+  }
+  console.error('Uncaught Exception:', err);
+  process.exit(1);
+});
+
 bootstrap();
