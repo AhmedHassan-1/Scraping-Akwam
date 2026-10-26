@@ -46,12 +46,24 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
       errors = null;
     }
 
-    this.logger.error(
+    if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
+      this.logger.error(
       `[ReqID: ${requestId || 'N/A'}] HTTP ${status} [${request.method} ${request.url}]: ${
         exception instanceof Error ? exception.message : String(exception)
       }`,
       exception instanceof Error ? exception.stack : undefined,
-    );
+      );
+    } else if (status === HttpStatus.NOT_FOUND) {
+      this.logger.warn(
+        `[ReqID: ${requestId || 'N/A'}] HTTP 404 [${request.method} ${request.url}]`,
+      );
+    } else {
+      this.logger.warn(
+        `[ReqID: ${requestId || 'N/A'}] HTTP ${status} [${request.method} ${request.url}]: ${
+          exception instanceof Error ? exception.message : String(exception)
+        }`,
+      );
+    }
 
     response.status(status).json({
       statusCode: status,
